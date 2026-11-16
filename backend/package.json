@@ -1,0 +1,33 @@
+{
+  "name": "cafeteria-do-joao-backend",
+  "version": "1.0.0",
+  "description": "Back-end da Cafeteria do João - Arquitetura em Camadas (API, Core Business e Database)",
+  "main": "src/app.js",
+  "scripts": {
+    "start": "node src/app.js",
+    "dev": "node --watch src/app.js"
+  },
+  "keywords": [
+    "cafeteria",
+    "express",
+    "api",
+    "clean-code",
+    "webp",
+    "bcrypt",
+    "turso"
+  ],
+  "author": "Time Back-end - Cafeteria do João",
+  "license": "MIT",
+  "dependencies": {
+    "@libsql/client": "^0.14.0",
+    "bcrypt": "^6.0.0",
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.7",
+    "express": "^4.21.2",
+    "express-rate-limit": "^7.5.0",
+    "helmet": "^8.0.0",
+    "jsonwebtoken": "^9.0.2",
+    "multer": "^2.5.0",
+    "sharp": "^0.33.5"
+  }
+}
