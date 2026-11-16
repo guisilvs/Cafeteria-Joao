@@ -3,3 +3,5 @@ node_modules/
 *.db
 *.db-journal
 *.log
+GUIA_INTEGRACAO.md
+guia_integracao*.md

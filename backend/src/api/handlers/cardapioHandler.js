@@ -8,13 +8,14 @@ const siteCore = require('../../core/siteCore');
 const { asyncHandler } = require('../middlewares/errorMiddleware');
 
 // ============================================================================
-// HANDLERS PÚBLICOS / CLIENTE
+// HANDLERS PÚBLICOS / CLIENTE (VISÃO USUÁRIO 161:289)
 // ============================================================================
 
 /**
  * GET /api/cardapio
  * Retorna o cardápio completo (categorias ativas + itens visíveis + agrupamento por categoria).
- * Se o cliente enviar token JWT, já marca `favorito: true` nos itens favoritados por ele.
+ * Se o cliente enviar token JWT, marca `favorito: true` nos itens favoritados e informa
+ * `possui_pedido_em_andamento` para exibir a bolinha de notificação na foto de perfil (tela 17:132).
  */
 const obterCardapioPublico = asyncHandler(async (req, res) => {
   const resultado = await cardapioCore.obterCardapioPublicoCore({
@@ -27,6 +28,10 @@ const obterCardapioPublico = asyncHandler(async (req, res) => {
   res.status(200).json({
     sucesso: true,
     ...resultado,
+    usuario_logado: Boolean(req.usuario),
+    possui_pedido_em_andamento: req.usuario
+      ? Boolean(req.usuario.possui_pedido_em_andamento)
+      : false,
   });
 });
 
@@ -60,7 +65,7 @@ const obterItemCardapioPublico = asyncHandler(async (req, res) => {
 });
 
 // ============================================================================
-// HANDLERS ADMINISTRATIVOS - CATEGORIAS
+// HANDLERS ADMINISTRATIVOS - CATEGORIAS (TELA 143:148)
 // ============================================================================
 
 /**
@@ -73,6 +78,19 @@ const listarCategoriasAdmin = asyncHandler(async (_req, res) => {
     sucesso: true,
     categorias,
     total: categorias.length,
+  });
+});
+
+/**
+ * GET /api/admin/categorias/:id/itens
+ * Retorna os dados da categoria e todos os seus itens (inclusive ocultos)
+ * para a tela 143:999 ("Cardápio > Gelados").
+ */
+const obterCategoriaComItensAdmin = asyncHandler(async (req, res) => {
+  const resultado = await cardapioCore.obterCategoriaComItensAdminCore(req.params.id);
+  res.status(200).json({
+    sucesso: true,
+    ...resultado,
   });
 });
 
@@ -131,7 +149,7 @@ const removerCategoriaAdmin = asyncHandler(async (req, res) => {
 });
 
 // ============================================================================
-// HANDLERS ADMINISTRATIVOS - ITENS / PRODUTOS DO CARDÁPIO
+// HANDLERS ADMINISTRATIVOS - ITENS / PRODUTOS DO CARDÁPIO (TELAS 143:999 E 161:294)
 // ============================================================================
 
 /**
@@ -258,6 +276,7 @@ module.exports = {
   listarCategoriasPublicas,
   obterItemCardapioPublico,
   listarCategoriasAdmin,
+  obterCategoriaComItensAdmin,
   criarCategoriaAdmin,
   atualizarCategoriaAdmin,
   reordenarCategoriasAdmin,

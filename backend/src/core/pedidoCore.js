@@ -47,7 +47,8 @@ function formatarDataHoraBR(isoDate) {
 }
 
 /**
- * Enriquecimento visual/semântico do objeto de pedido para o Front-end (Cliente e Admin).
+ * Enriquecimento visual/semântico do objeto de pedido para o Front-end (Cliente e Admin),
+ * contemplando todos os textos das telas 17:222, 17:321 e 143:150 do Figma.
  * @param {object} pedido
  * @returns {object}
  */
@@ -61,6 +62,7 @@ function formatarPedido(pedido) {
       : itens.reduce((acc, item) => acc + Number(item.subtotal || 0), 0);
 
   const totalArredondado = Math.round(totalNumerico * 100) / 100;
+  const numeroPedido = pedido.numero || pedido.id;
 
   const resumoItensTexto = itens
     .map((i) => `${i.quantidade}x ${i.nome}`)
@@ -72,21 +74,37 @@ function formatarPedido(pedido) {
   if (pedido.status === 'concluido') statusLabel = 'Finalizado';
   if (pedido.status === 'cancelado') statusLabel = 'Cancelado';
 
+  const previsaoMinutos = pedido.previsao_minutos || PREVISAO_MINUTOS_PADRAO;
   const finalizadoFormatado = formatarDataHoraBR(pedido.finalizado_em);
+  const criadoFormatado = formatarDataHoraBR(pedido.criado_em);
 
   return {
     ...pedido,
-    numero: pedido.numero || pedido.id,
-    codigo_formatado: `Pedido #${pedido.numero || pedido.id}`,
+    numero: numeroPedido,
+    codigo_formatado: `Pedido #${numeroPedido}`,
+    titulo_status_curto: emAndamento
+      ? `#${numeroPedido} Em preparo...`
+      : `#${numeroPedido} Retirado`,
     itens,
     resumo_itens_texto: resumoItensTexto,
     total: totalArredondado,
     total_formatado: formatarMoedaBRL(totalArredondado),
+    retirada_label: `Retirada: ${pedido.unidade_retirada || UNIDADE_PADRAO}`,
     em_andamento: emAndamento,
     status_label: statusLabel,
-    previsao_minutos: pedido.previsao_minutos || PREVISAO_MINUTOS_PADRAO,
-    previsao_label: `Previsão de retirada: ${pedido.previsao_minutos || PREVISAO_MINUTOS_PADRAO} minutos`,
-    criado_em_formatado: formatarDataHoraBR(pedido.criado_em),
+    previsao_minutos: previsaoMinutos,
+    // Labels para a Visão do Usuário (Telas 17:222 e 17:321)
+    previsao_label: `Previsão de retirada: ${previsaoMinutos} minutos`,
+    texto_retirada_cliente: finalizadoFormatado
+      ? `Você retirou o pedido em: ${finalizadoFormatado}`
+      : null,
+    // Labels para a Visão do Administrador (Tela 143:150)
+    tempo_ate_atraso_minutos: previsaoMinutos,
+    tempo_ate_atraso_label: `Tempo até atraso: ${previsaoMinutos} minutos`,
+    texto_separado_admin: finalizadoFormatado
+      ? `Pedido separado em: ${finalizadoFormatado}`
+      : null,
+    criado_em_formatado: criadoFormatado,
     finalizado_em_formatado: finalizadoFormatado,
   };
 }
@@ -96,7 +114,8 @@ function formatarPedido(pedido) {
 // ============================================================================
 
 /**
- * Monta o resumo detalhado da sacola atual do cliente com preços atualizados do cardápio.
+ * Monta o resumo detalhado da sacola atual do cliente com preços atualizados do cardápio
+ * e os campos exibidos no cabeçalho da tela 16:336 ("Para: ...", "Unidade: ...", "Pedido: #...").
  * @param {number|string} usuarioId
  */
 async function obterSacolaDetalhadaCore(usuarioId) {
@@ -107,7 +126,9 @@ async function obterSacolaDetalhadaCore(usuarioId) {
   }
 
   const sacolaBruta = await repositorio.obterSacolaUsuario(idUsuario);
+  const proximoNumero = await repositorio.obterProximoNumeroPedido();
   const itensDetalhados = [];
+  const itensExpandidos = [];
 
   for (const entrada of sacolaBruta) {
     const produto = await repositorio.buscarItemCardapioPorId(entrada.item_id);
@@ -116,7 +137,7 @@ async function obterSacolaDetalhadaCore(usuarioId) {
       const precoUnitario = Number(produto.preco) || 0;
       const subtotal = Math.round(precoUnitario * quantidade * 100) / 100;
 
-      itensDetalhados.push({
+      const itemAgrupado = {
         item_id: produto.id,
         nome: produto.nome,
         descricao: produto.descricao,
@@ -126,7 +147,18 @@ async function obterSacolaDetalhadaCore(usuarioId) {
         quantidade,
         subtotal,
         subtotal_formatado: formatarMoedaBRL(subtotal),
-      });
+      };
+
+      itensDetalhados.push(itemAgrupado);
+
+      for (let u = 0; u < quantidade; u += 1) {
+        itensExpandidos.push({
+          ...itemAgrupado,
+          quantidade: 1,
+          subtotal: precoUnitario,
+          subtotal_formatado: formatarMoedaBRL(precoUnitario),
+        });
+      }
     }
   }
 
@@ -137,8 +169,14 @@ async function obterSacolaDetalhadaCore(usuarioId) {
   return {
     usuario_id: usuario.id,
     cliente_nome: usuario.nome,
+    cliente_foto: usuario.foto_webp || null,
+    para_label: `Para: ${usuario.nome}`,
     unidade_retirada: UNIDADE_PADRAO,
+    unidade_label: `Unidade: ${UNIDADE_PADRAO}`,
+    numero_pedido_previsto: proximoNumero,
+    pedido_previsto_label: `Pedido: #${proximoNumero}`,
     itens: itensDetalhados,
+    itens_expandidos: itensExpandidos,
     total_itens: totalQuantidade,
     total,
     total_formatado: formatarMoedaBRL(total),
@@ -146,7 +184,7 @@ async function obterSacolaDetalhadaCore(usuarioId) {
 }
 
 /**
- * Adiciona um item do cardápio à sacola de pedido do cliente.
+ * Adiciona um item do cardápio à sacola de pedido do cliente ("Adicionar ao pedido").
  * @param {number|string} usuarioId
  * @param {object} dados
  * @param {number|string} dados.item_id
@@ -155,7 +193,7 @@ async function obterSacolaDetalhadaCore(usuarioId) {
 async function adicionarItemSacolaCore(usuarioId, dados = {}) {
   const idUsuario = validarId(usuarioId, 'ID do usuário');
   const idItem = validarId(
-    dados.item_id !== undefined ? dados.item_id : dados.itemId || dados.produto_id,
+    dados.item_id !== undefined ? dados.item_id : dados.itemId || dados.produto_id || dados.id,
     'ID do item do cardápio'
   );
 
@@ -208,7 +246,7 @@ async function atualizarQuantidadeItemSacolaCore(usuarioId, itemId, novaQuantida
   }
 
   if (qtd === 0) {
-    return removerItemSacolaCore(idUsuario, idItem);
+    return removerItemSacolaCore(idUsuario, idItem, { apenasUmaUnidade: false });
   }
 
   const sacolaAtual = [...(await repositorio.obterSacolaUsuario(idUsuario))];
@@ -226,15 +264,28 @@ async function atualizarQuantidadeItemSacolaCore(usuarioId, itemId, novaQuantida
  * Remove um item específico da sacola (Botão "X" da tela 16:336 do Figma).
  * @param {number|string} usuarioId
  * @param {number|string} itemId
+ * @param {object} [opcoes]
+ * @param {boolean} [opcoes.apenasUmaUnidade=false]
  */
-async function removerItemSacolaCore(usuarioId, itemId) {
+async function removerItemSacolaCore(usuarioId, itemId, { apenasUmaUnidade = false } = {}) {
   const idUsuario = validarId(usuarioId, 'ID do usuário');
   const idItem = validarId(itemId, 'ID do item');
 
-  const sacolaAtual = await repositorio.obterSacolaUsuario(idUsuario);
-  const novaSacola = sacolaAtual.filter((entry) => String(entry.item_id) !== String(idItem));
+  const sacolaAtual = [...(await repositorio.obterSacolaUsuario(idUsuario))];
+  const idx = sacolaAtual.findIndex((entry) => String(entry.item_id) === String(idItem));
 
-  await repositorio.salvarSacolaUsuario(idUsuario, novaSacola);
+  if (idx >= 0) {
+    if (apenasUmaUnidade && sacolaAtual[idx].quantidade > 1) {
+      sacolaAtual[idx] = {
+        ...sacolaAtual[idx],
+        quantidade: sacolaAtual[idx].quantidade - 1,
+      };
+    } else {
+      sacolaAtual.splice(idx, 1);
+    }
+    await repositorio.salvarSacolaUsuario(idUsuario, sacolaAtual);
+  }
+
   return obterSacolaDetalhadaCore(idUsuario);
 }
 
@@ -256,10 +307,6 @@ async function limparSacolaCore(usuarioId) {
  * Normaliza e valida uma lista de itens de pedido contra o banco de dados,
  * garantindo que o preço seja sempre calculado no Back-end (segurança contra manipulação de preço no Front-end).
  *
- * Aceita formatos:
- * - `[{ item_id: 1, quantidade: 2 }, { id: 10, quantidade: 1 }]`
- * - `[1, 10, 12]` (array simples de IDs de produtos)
- *
  * @param {Array} itensEntrada
  */
 async function validarECalcularItensPedido(itensEntrada) {
@@ -267,7 +314,6 @@ async function validarECalcularItensPedido(itensEntrada) {
     throw erroValidacao('Adicione pelo menos um item do cardápio para realizar o pedido.');
   }
 
-  // Agrupa quantidades caso o mesmo item apareça mais de uma vez na lista
   const mapaQuantidades = new Map();
 
   for (const entrada of itensEntrada) {
@@ -328,7 +374,6 @@ async function validarECalcularItensPedido(itensEntrada) {
  * @param {object} [dados]
  * @param {Array} [dados.itens] - Lista opcional de itens (se omitida, usa a sacola atual)
  * @param {string} [dados.unidade_retirada] - Ex: "Shopping Beira Mar"
- * @param {string} [dados.observacoes]
  */
 async function criarPedidoClienteCore(usuarioId, dados = {}) {
   const idUsuario = validarId(usuarioId, 'ID do usuário');
@@ -364,7 +409,6 @@ async function criarPedidoClienteCore(usuarioId, dados = {}) {
     status: 'preparando',
   });
 
-  // Limpa a sacola temporária do cliente após enviar o pedido
   await repositorio.salvarSacolaUsuario(idUsuario, []);
 
   return formatarPedido(novoPedido);
@@ -387,10 +431,18 @@ async function listarPedidosClienteCore(usuarioId, filtros = {}) {
   const historico = todos.filter((p) => !p.em_andamento);
 
   if (filtros.tipo === 'em_andamento') {
-    return { pedidos: emAndamento, total: emAndamento.length };
+    return {
+      pedidos: emAndamento,
+      possuiPedidoEmAndamento: emAndamento.length > 0,
+      total: emAndamento.length,
+    };
   }
   if (filtros.tipo === 'historico') {
-    return { pedidos: historico, total: historico.length };
+    return {
+      pedidos: historico,
+      possuiPedidoEmAndamento: emAndamento.length > 0,
+      total: historico.length,
+    };
   }
 
   return {
@@ -448,6 +500,7 @@ async function listarPedidosAdminCore(filtros = {}) {
     pendentes,
     concluidos,
     todos,
+    possuiPedidosPendentes: pendentes.length > 0,
     totalPendentes: pendentes.length,
     totalConcluidos: concluidos.length,
     total: todos.length,

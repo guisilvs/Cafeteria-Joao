@@ -9,6 +9,9 @@
 
 const siteCore = require('../core/siteCore');
 const repositorioCore = require('../core/repositorioCore');
+const pedidoCore = require('../core/pedidoCore');
+const cardapioCore = require('../core/cardapioCore');
+const clienteCore = require('../core/clienteCore');
 const { asyncHandler } = require('./middlewares/errorMiddleware');
 
 const authHandler = require('./handlers/authHandler');
@@ -46,10 +49,44 @@ const obterInformacoesSite = asyncHandler(async (_req, res) => {
   });
 });
 
+/**
+ * GET /api/admin/resumo
+ * Fornece os indicadores da Barra Lateral e tela inicial do Admin (tela 143:146 "Administrador - opções"):
+ * - Nome e cargo do operador logado ("Operador Guilherme Silveira")
+ * - Indicador `possuiPedidosPendentes` para a bolinha de notificação no sino ("Pedidos")
+ * - Contadores gerais de pedidos, categorias, itens e usuários
+ */
+const obterResumoPainelAdmin = asyncHandler(async (req, res) => {
+  const [pedidos, categorias, itens, usuarios] = await Promise.all([
+    pedidoCore.listarPedidosAdminCore(),
+    cardapioCore.listarCategoriasCore(false),
+    cardapioCore.listarItensAdminCore(),
+    clienteCore.listarUsuariosAdmin(),
+  ]);
+
+  res.status(200).json({
+    sucesso: true,
+    operador: clienteCore.formatarUsuarioParaResposta(req.usuario),
+    notificacoes: {
+      possuiPedidosPendentes: pedidos.possuiPedidosPendentes,
+      totalPedidosPendentes: pedidos.totalPendentes,
+    },
+    contadores: {
+      pedidosPendentes: pedidos.totalPendentes,
+      pedidosConcluidos: pedidos.totalConcluidos,
+      categorias: categorias.length,
+      itensCardapio: itens.length,
+      usuariosInternos: usuarios.totalInternos,
+      usuariosClientes: usuarios.totalClientes,
+    },
+  });
+});
+
 module.exports = {
-  // Saúde e Informações Gerais
+  // Saúde, Informações Gerais e Resumo Admin
   obterStatusSistema,
   obterInformacoesSite,
+  obterResumoPainelAdmin,
 
   // 1. Autenticação e Conta (Cliente e Admin)
   ...authHandler,

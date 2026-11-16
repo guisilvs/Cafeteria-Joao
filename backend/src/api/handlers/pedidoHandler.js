@@ -55,9 +55,15 @@ const atualizarItemSacola = asyncHandler(async (req, res) => {
 /**
  * DELETE /api/sacola/itens/:itemId
  * Remove um item da sacola (Botão "X" da tela 16:336 do Figma).
+ * Suporta `?apenasUmaUnidade=true` caso o cliente queira decrementar 1 unidade.
  */
 const removerItemSacola = asyncHandler(async (req, res) => {
-  const sacola = await pedidoCore.removerItemSacolaCore(req.usuario.id, req.params.itemId);
+  const apenasUmaUnidade =
+    req.query.apenasUmaUnidade === 'true' || req.body?.apenasUmaUnidade === true;
+
+  const sacola = await pedidoCore.removerItemSacolaCore(req.usuario.id, req.params.itemId, {
+    apenasUmaUnidade,
+  });
   res.status(200).json({
     sucesso: true,
     mensagem: 'Item removido do pedido.',
@@ -79,7 +85,7 @@ const limparSacola = asyncHandler(async (req, res) => {
 });
 
 // ============================================================================
-// HANDLERS DE PEDIDOS DO CLIENTE
+// HANDLERS DE PEDIDOS DO CLIENTE (TELAS 17:321 E 17:222)
 // ============================================================================
 
 /**
@@ -124,6 +130,7 @@ const listarMeusPedidosEmAndamento = asyncHandler(async (req, res) => {
   res.status(200).json({
     sucesso: true,
     pedidos: resultado.pedidos,
+    possuiPedidoEmAndamento: resultado.possuiPedidoEmAndamento,
     total: resultado.total,
   });
 });
@@ -140,6 +147,7 @@ const listarMeuHistoricoPedidos = asyncHandler(async (req, res) => {
   res.status(200).json({
     sucesso: true,
     pedidos: resultado.pedidos,
+    possuiPedidoEmAndamento: resultado.possuiPedidoEmAndamento,
     total: resultado.total,
   });
 });
@@ -176,7 +184,7 @@ const listarPedidosAdmin = asyncHandler(async (req, res) => {
 });
 
 /**
- * GET /api/admin/pedidos/andamento (ou /api/admin/pedidos/pendentes)
+ * GET /api/admin/pedidos/pendentes (ou /api/admin/pedidos/andamento)
  * Lista apenas os pedidos pendentes/em preparo no painel Admin.
  */
 const listarPedidosPendentesAdmin = asyncHandler(async (_req, res) => {
@@ -184,12 +192,13 @@ const listarPedidosPendentesAdmin = asyncHandler(async (_req, res) => {
   res.status(200).json({
     sucesso: true,
     pedidos: resultado.pendentes,
+    possuiPedidosPendentes: resultado.possuiPedidosPendentes,
     total: resultado.totalPendentes,
   });
 });
 
 /**
- * GET /api/admin/pedidos/historico (ou /api/admin/pedidos/concluidos)
+ * GET /api/admin/pedidos/concluidos (ou /api/admin/pedidos/historico)
  * Lista apenas o histórico de pedidos concluídos/cancelados no painel Admin.
  */
 const listarHistoricoPedidosAdmin = asyncHandler(async (_req, res) => {

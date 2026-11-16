@@ -39,7 +39,7 @@ function gerarSlugCategoria(nome) {
 
 /**
  * Formata um item do cardápio adicionando campos úteis para o Front-end
- * (como `preco_formatado`, `visivel` e flag `favorito`).
+ * (como `preco_formatado`, `valor_label` da tela 143:999, `visivel` e flag `favorito`).
  *
  * @param {object} item
  * @param {Set<string>|null} [conjuntoFavoritos=null]
@@ -47,12 +47,14 @@ function gerarSlugCategoria(nome) {
 function formatarItemCardapio(item, conjuntoFavoritos = null) {
   if (!item) return null;
   const precoNumerico = Number(item.preco) || 0;
+  const precoFormatado = formatarMoedaBRL(precoNumerico);
   const oculto = Boolean(item.oculto);
 
   return {
     ...item,
     preco: precoNumerico,
-    preco_formatado: formatarMoedaBRL(precoNumerico),
+    preco_formatado: precoFormatado,
+    valor_label: `Valor: ${precoFormatado}`,
     oculto,
     visivel: !oculto,
     acao_visibilidade_label: oculto ? 'Exibir' : 'Ocultar',
@@ -76,7 +78,6 @@ async function buscarCategoriaOuFalhar(identificadorCategoria) {
   const porIdOuSlug = await repositorio.buscarCategoriaPorId(identificadorCategoria);
   if (porIdOuSlug) return porIdOuSlug;
 
-  // Também aceita buscar pelo nome da categoria (ex: "Gelados", "Quentes", "Sanduiches")
   const todas = await repositorio.listarCategorias(false);
   const nomeNormalizado = String(identificadorCategoria).trim().toLowerCase();
   const encontradaPorNome = todas.find(
@@ -170,7 +171,6 @@ async function atualizarCategoriaCore(idCategoria, dados = {}) {
 
 /**
  * Permite reordenar as categorias (suporte ao ícone "posição pinça" da tela 143:148 do Figma).
- * Aceita um array de IDs `[2, 1, 3]` ou um array de objetos `[{ id: 2, ordem: 1 }, ...]`.
  * @param {Array<number|string|{id: number|string, ordem: number}>} novaOrdenacao
  */
 async function reordenarCategoriasCore(novaOrdenacao) {
@@ -226,11 +226,6 @@ async function removerCategoriaCore(idCategoria, { forcar = false } = {}) {
 // REGRAS DE NEGÓCIO DE ITENS / PRODUTOS DO CARDÁPIO
 // ============================================================================
 
-/**
- * Obtém o conjunto de IDs favoritados por um usuário (se logado).
- * @param {number|string|null} usuarioId
- * @returns {Promise<Set<string>|null>}
- */
 async function obterConjuntoFavoritosUsuario(usuarioId) {
   if (!usuarioId) return null;
   const usuario = await repositorio.buscarUsuarioPorId(usuarioId);
@@ -240,12 +235,6 @@ async function obterConjuntoFavoritosUsuario(usuarioId) {
 
 /**
  * Consulta o cardápio público para clientes (apenas itens visíveis/não ocultos).
- *
- * @param {object} [opcoes]
- * @param {number|string} [opcoes.categoriaId]
- * @param {string} [opcoes.categoria] - Nome ou slug da categoria (ex: "Gelados")
- * @param {string} [opcoes.busca]
- * @param {number|string} [opcoes.usuarioId] - Se informado, marca `favorito: true` nos itens do usuário
  */
 async function obterCardapioPublicoCore(opcoes = {}) {
   const categorias = await repositorio.listarCategorias(true);
@@ -317,11 +306,23 @@ async function listarItensAdminCore(filtros = {}) {
 }
 
 /**
+ * Lista os itens de uma categoria específica no painel Admin junto com os metadados da categoria
+ * (para preencher a tela 143:999 "Cardápio > Gelados").
+ * @param {number|string} identificadorCategoria
+ */
+async function obterCategoriaComItensAdminCore(identificadorCategoria) {
+  const categoria = await buscarCategoriaOuFalhar(identificadorCategoria);
+  const itens = await listarItensAdminCore({ categoriaId: categoria.id });
+
+  return {
+    categoria,
+    itens,
+    total: itens.length,
+  };
+}
+
+/**
  * Busca um único item do cardápio por ID.
- * @param {number|string} idItem
- * @param {object} [opcoes]
- * @param {boolean} [opcoes.incluirOculto=false]
- * @param {number|string} [opcoes.usuarioId=null]
  */
 async function buscarItemCardapioPorIdCore(idItem, { incluirOculto = false, usuarioId = null } = {}) {
   const id = validarId(idItem, 'ID do produto');
@@ -338,8 +339,6 @@ async function buscarItemCardapioPorIdCore(idItem, { incluirOculto = false, usua
 /**
  * Cria um novo item em uma categoria do cardápio (Tela 161:294 "Criar novo produto").
  * Comprime automaticamente a foto enviada para `.webp`.
- *
- * @param {object} dados
  */
 async function criarItemCardapioCore(dados = {}) {
   const nome = limparTextoSimples(dados.nome);
@@ -378,8 +377,6 @@ async function criarItemCardapioCore(dados = {}) {
 
 /**
  * Atualiza um item existente do cardápio (Admin).
- * @param {number|string} idItem
- * @param {object} dados
  */
 async function atualizarItemCardapioCore(idItem, dados = {}) {
   const id = validarId(idItem, 'ID do produto');
@@ -437,8 +434,6 @@ async function atualizarItemCardapioCore(idItem, dados = {}) {
 
 /**
  * Alterna ou define a visibilidade de um item no cardápio (Botão "Ocultar" da tela 143:999 do Figma).
- * @param {number|string} idItem
- * @param {boolean|undefined} ocultoDesejado - Se omitido, inverte o estado atual
  */
 async function alternarVisibilidadeItemCore(idItem, ocultoDesejado = undefined) {
   const id = validarId(idItem, 'ID do produto');
@@ -459,7 +454,6 @@ async function alternarVisibilidadeItemCore(idItem, ocultoDesejado = undefined) 
 
 /**
  * Remove permanentemente um item do cardápio.
- * @param {number|string} idItem
  */
 async function removerItemCardapioCore(idItem) {
   const id = validarId(idItem, 'ID do produto');
@@ -482,6 +476,7 @@ module.exports = {
   // Itens / Produtos
   obterCardapioPublicoCore,
   listarItensAdminCore,
+  obterCategoriaComItensAdminCore,
   buscarItemCardapioPorIdCore,
   criarItemCardapioCore,
   atualizarItemCardapioCore,

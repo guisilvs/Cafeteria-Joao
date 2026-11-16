@@ -7,8 +7,9 @@
  * - Caso o time de Banco de Dados já tenha criado `src/database/queries.js`, todas as chamadas
  *   são delegadas diretamente para lá.
  * - Caso `src/database/queries.js` ainda não tenha sido implementado, utiliza um banco em
- *   memória pré-carregado com os dados oficiais do protótipo do Figma (Cafeteria do João),
- *   permitindo que o time de Front-end consuma e teste 100% das APIs imediatamente.
+ *   memória pré-carregado com todos os dados das duas visões do protótipo do Figma
+ *   (Visão Usuário 161:289 e Visão Administrador 161:290), permitindo que o time de Front-end
+ *   consuma e teste 100% das APIs imediatamente.
  */
 
 const fs = require('fs');
@@ -36,7 +37,7 @@ function carregarModuloQueries() {
 }
 
 // ============================================================================
-// ESTADO EM MEMÓRIA (FALLBACK FIEL AO PROTÓTIPO DO FIGMA)
+// ESTADO EM MEMÓRIA (FIEL ÀS TELAS 161:289 E 161:290 DO FIGMA)
 // ============================================================================
 
 const SENHA_HASH_PADRAO_CLIENTE = bcrypt.hashSync('123456', 10);
@@ -57,7 +58,7 @@ const estadoMemoria = {
   ],
 
   itensCardapio: [
-    // Categoria 1: Gelados
+    // Categoria 1: Gelados (Telas 1:2, 14:41, 143:999)
     {
       id: 1,
       categoria_id: 1,
@@ -103,7 +104,7 @@ const estadoMemoria = {
       criado_em: '2026-05-01T08:00:00.000Z',
     },
 
-    // Categoria 2: Quentes
+    // Categoria 2: Quentes (Telas 13:250, 14:128)
     {
       id: 5,
       categoria_id: 2,
@@ -149,7 +150,7 @@ const estadoMemoria = {
       criado_em: '2026-05-01T08:00:00.000Z',
     },
 
-    // Categoria 3: Sanduiches
+    // Categoria 3: Sanduiches (Telas 13:148, 14:180)
     {
       id: 9,
       categoria_id: 3,
@@ -207,7 +208,7 @@ const estadoMemoria = {
       cargo: null,
       foto_webp: null,
       ativo: true,
-      favoritos: [2, 5, 9, 12], // Matcha, Espresso Duplo, Sanduiche Clássico, Misto Pão de Queijo (conforme Figma)
+      favoritos: [2, 5, 9, 12], // Matcha, Espresso Duplo, Sanduiche Clássico, Misto Pão de Queijo (telas 14:41, 14:128, 14:180)
       ultimo_acesso: new Date().toISOString(),
       criado_em: '2026-05-01T10:00:00.000Z',
     },
@@ -227,12 +228,12 @@ const estadoMemoria = {
     },
     {
       id: 3,
-      nome: 'Administrador Guilherme Silveira',
+      nome: 'Guilherme Silveira',
       email: 'admin@cafeteriajoao.com',
       telefone: '48999990000',
       senha_hash: SENHA_HASH_PADRAO_ADMIN,
       tipo: 'admin',
-      cargo: 'Operador / Gerente',
+      cargo: 'Operador',
       foto_webp: null,
       ativo: true,
       favoritos: [],
@@ -241,10 +242,61 @@ const estadoMemoria = {
     },
   ],
 
-  // Sacolas temporárias indexadas por usuario_id
   sacolas: new Map(),
 
+  // Pedidos fiéis às telas 17:222 (Minha conta) e 143:150 (Administrador - pedidos)
   pedidos: [
+    {
+      id: 52675,
+      numero: 52675,
+      usuario_id: 1,
+      cliente_nome: 'Guilherme Silveira',
+      cliente_foto: null,
+      itens: [
+        { item_id: 4, nome: 'Latte', preco_unitario: 10.00, quantidade: 1, subtotal: 10.00 },
+        { item_id: 9, nome: 'Bolo de cenoura', preco_unitario: 9.30, quantidade: 1, subtotal: 9.30 },
+      ],
+      total: 19.30,
+      unidade_retirada: 'Shopping Beira Mar',
+      previsao_minutos: 5,
+      status: 'concluido',
+      criado_em: '2026-05-06T11:00:00.000Z',
+      finalizado_em: '2026-05-06T11:10:00.000Z',
+    },
+    {
+      id: 52676,
+      numero: 52676,
+      usuario_id: 1,
+      cliente_nome: 'Guilherme Silveira',
+      cliente_foto: null,
+      itens: [
+        { item_id: 6, nome: 'Cappuccino', preco_unitario: 12.00, quantidade: 1, subtotal: 12.00 },
+        { item_id: 12, nome: 'Pão de queijo', preco_unitario: 5.00, quantidade: 2, subtotal: 10.00 },
+      ],
+      total: 22.00,
+      unidade_retirada: 'Shopping Beira Mar',
+      previsao_minutos: 5,
+      status: 'concluido',
+      criado_em: '2026-05-07T15:10:00.000Z',
+      finalizado_em: '2026-05-07T15:20:00.000Z',
+    },
+    {
+      id: 52677,
+      numero: 52677,
+      usuario_id: 1,
+      cliente_nome: 'Guilherme Silveira',
+      cliente_foto: null,
+      itens: [
+        { item_id: 3, nome: 'Chá gelado', preco_unitario: 5.00, quantidade: 2, subtotal: 10.00 },
+        { item_id: 9, nome: 'Croissant de chocolate', preco_unitario: 8.50, quantidade: 1, subtotal: 8.50 },
+      ],
+      total: 18.50,
+      unidade_retirada: 'Shopping Beira Mar',
+      previsao_minutos: 5,
+      status: 'concluido',
+      criado_em: '2026-05-08T09:35:00.000Z',
+      finalizado_em: '2026-05-08T09:45:00.000Z',
+    },
     {
       id: 52678,
       numero: 52678,
@@ -363,7 +415,7 @@ async function buscarUsuarioPorTelefone(telefone) {
 async function listarUsuarios(filtros = {}) {
   return executarQueryOuFallback(
     ['listarUsuarios', 'getUsuarios', 'selectUsuarios'],
-    async ({ tipo, ativo, busca } = {}) => {
+    async ({ tipo, ativo, cargo, busca } = {}) => {
       let lista = estadoMemoria.usuarios.map((u) => ({ ...u, favoritos: [...(u.favoritos || [])] }));
 
       if (tipo) {
@@ -377,6 +429,11 @@ async function listarUsuarios(filtros = {}) {
       if (ativo !== undefined && ativo !== null && ativo !== '') {
         const boolAtivo = ativo === true || ativo === 'true' || ativo === '1' || ativo === 1;
         lista = lista.filter((u) => Boolean(u.ativo) === boolAtivo);
+      }
+
+      if (cargo) {
+        const termoCargo = String(cargo).toLowerCase();
+        lista = lista.filter((u) => u.cargo && u.cargo.toLowerCase().includes(termoCargo));
       }
 
       if (busca) {
@@ -524,7 +581,6 @@ async function atualizarCategoria(id, campos) {
       };
       estadoMemoria.categorias[idx] = atualizada;
 
-      // Mantém o nome da categoria sincronizado nos itens em memória
       if (novosCampos.nome) {
         estadoMemoria.itensCardapio.forEach((item) => {
           if (String(item.categoria_id) === String(atual.id)) {
@@ -685,6 +741,13 @@ async function salvarSacolaUsuario(usuarioId, itensSacola) {
   );
 }
 
+async function obterProximoNumeroPedido() {
+  return executarQueryOuFallback(
+    ['obterProximoNumeroPedido', 'getNextPedidoId'],
+    async () => estadoMemoria.contadores.pedidos + 1
+  );
+}
+
 async function criarPedido(dadosPedido) {
   return executarQueryOuFallback(
     ['criarPedido', 'inserirPedido', 'insertPedido'],
@@ -751,7 +814,6 @@ async function listarPedidos(filtros = {}) {
         lista = lista.filter((p) => p.status === 'concluido' || p.status === 'cancelado');
       }
 
-      // Ordena do mais recente para o mais antigo
       return lista.sort((a, b) => Number(b.id) - Number(a.id));
     },
     filtros
@@ -814,6 +876,7 @@ module.exports = {
   // Sacola e Pedidos
   obterSacolaUsuario,
   salvarSacolaUsuario,
+  obterProximoNumeroPedido,
   criarPedido,
   buscarPedidoPorId,
   listarPedidos,

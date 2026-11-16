@@ -10,13 +10,16 @@ const { asyncHandler } = require('../middlewares/errorMiddleware');
 /**
  * GET /api/admin/usuarios
  * Lista usuários separados em `internos` (funcionários/admins) e `clientes`,
- * permitindo filtrar por `?tipo=interno|cliente`, `?ativo=true|false` e `?busca=...`.
+ * permitindo filtrar por `?tipo=interno|cliente`, `?ativo=true|false`, `?cargo=...`,
+ * `?busca=...` e `?ordenar=nome|ultimo_acesso`.
  */
 const listarUsuariosAdmin = asyncHandler(async (req, res) => {
   const resultado = await clienteCore.listarUsuariosAdmin({
     tipo: req.query.tipo,
     ativo: req.query.ativo,
+    cargo: req.query.cargo,
     busca: req.query.busca,
+    ordenar: req.query.ordenar,
   });
 
   res.status(200).json({

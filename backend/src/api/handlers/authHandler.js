@@ -1,6 +1,7 @@
 /**
  * @file authHandler.js
- * @description Handlers da camada de API para Autenticação, Cadastro de Conta e Perfil.
+ * @description Handlers da camada de API para Autenticação, Cadastro de Conta,
+ * Recuperação de Senha ("Esqueceu sua senha?") e Perfil.
  */
 
 const authCore = require('../../core/authCore');
@@ -27,7 +28,7 @@ const registrarCliente = asyncHandler(async (req, res) => {
 
 /**
  * POST /api/auth/login
- * Realiza login do usuário (aceita E-mail ou Telefone + Senha).
+ * Realiza login do usuário (aceita E-mail ou Telefone + Senha - tela 82:113 do Figma).
  */
 const loginUsuario = asyncHandler(async (req, res) => {
   const resultado = await authCore.autenticarUsuario({
@@ -44,7 +45,7 @@ const loginUsuario = asyncHandler(async (req, res) => {
 
 /**
  * POST /api/auth/admin/login (ou /api/admin/login)
- * Realiza login exclusivo para funcionários e administradores no painel Admin.
+ * Realiza login exclusivo para funcionários e administradores no painel Admin (tela 143:145).
  */
 const loginAdmin = asyncHandler(async (req, res) => {
   const resultado = await authCore.autenticarUsuario({
@@ -60,8 +61,22 @@ const loginAdmin = asyncHandler(async (req, res) => {
 });
 
 /**
+ * POST /api/auth/recuperar-senha (ou /api/auth/redefinir-senha)
+ * Permite redefinir a senha validando E-mail + Telefone cadastrado ("Esqueceu sua senha?" - tela 82:113).
+ */
+const recuperarSenha = asyncHandler(async (req, res) => {
+  const resultado = await authCore.redefinirSenhaPorConfirmacao(req.body);
+
+  res.status(200).json({
+    sucesso: true,
+    mensagem: 'Senha redefinida com sucesso! Você já pode fazer login com a nova senha.',
+    ...resultado,
+  });
+});
+
+/**
  * GET /api/auth/me (ou /api/auth/perfil)
- * Retorna os dados do usuário autenticado atual.
+ * Retorna os dados do usuário autenticado atual (com indicadores de pedido em andamento).
  */
 const obterPerfilAtual = asyncHandler(async (req, res) => {
   const usuario = clienteCore.formatarUsuarioParaResposta(req.usuario);
@@ -108,6 +123,7 @@ module.exports = {
   registrarCliente,
   loginUsuario,
   loginAdmin,
+  recuperarSenha,
   obterPerfilAtual,
   atualizarPerfilAtual,
   logoutUsuario,

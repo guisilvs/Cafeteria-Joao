@@ -5,7 +5,7 @@
  *
  * Atende aos requisitos:
  * - Cliente: 1. criar conta e fazer login
- * - Admin: 7. ver e gerenciar usuários (clientes e funcionários)
+ * - Admin: 7. ver e gerenciar usuários (clientes e funcionários, incluindo filtro bi:filter da tela 143:838)
  * - Admin: 8. criar novo usuário (cliente e funcionário)
  */
 
@@ -26,12 +26,6 @@ const {
   erroProibido,
 } = require('./errosCore');
 
-/**
- * Deriva um nome amigável a partir do e-mail caso o formulário de cadastro
- * envie apenas E-mail, Telefone, Senha e Confirmar Senha (conforme tela 87:216 do Figma).
- * @param {string} email
- * @returns {string}
- */
 function derivarNomeDeEmail(email) {
   const prefixo = String(email || '').split('@')[0] || 'Cliente';
   return prefixo
@@ -40,11 +34,6 @@ function derivarNomeDeEmail(email) {
     .trim();
 }
 
-/**
- * Formata a informação de último acesso no estilo do protótipo ("hoje" ou data).
- * @param {string|null} isoDate
- * @returns {string}
- */
 function formatarUltimoAcesso(isoDate) {
   if (!isoDate) return 'Nunca acessou';
   const data = new Date(isoDate);
@@ -66,11 +55,6 @@ function formatarUltimoAcesso(isoDate) {
   return `${dia}/${mes}/${ano}`;
 }
 
-/**
- * Formata um usuário para exibição segura na API.
- * @param {object} usuario
- * @returns {object}
- */
 function formatarUsuarioParaResposta(usuario) {
   const seguro = authCore.sanitizarUsuarioPublico(usuario);
   if (!seguro) return null;
@@ -82,12 +66,6 @@ function formatarUsuarioParaResposta(usuario) {
   };
 }
 
-/**
- * Verifica se já existe outro usuário usando o mesmo e-mail ou telefone.
- * @param {string} email
- * @param {string} telefone
- * @param {number|string|null} [ignorarId=null]
- */
 async function garantirUnicidadeEmailETelefone(email, telefone, ignorarId = null) {
   if (email) {
     const existenteEmail = await repositorio.buscarUsuarioPorEmail(email);
@@ -105,16 +83,7 @@ async function garantirUnicidadeEmailETelefone(email, telefone, ignorarId = null
 }
 
 /**
- * Realiza o auto-cadastro de um novo cliente (Tela "Criar conta" do aplicativo).
- *
- * @param {object} dados
- * @param {string} [dados.nome]
- * @param {string} dados.email
- * @param {string} dados.telefone
- * @param {string} dados.senha
- * @param {string} [dados.confirmarSenha]
- * @param {Buffer|string} [dados.foto] - Arquivo ou Base64 da foto de perfil
- * @returns {Promise<{ token: string, usuario: object }>}
+ * Realiza o auto-cadastro de um novo cliente (Tela 87:216 "Criar conta" do aplicativo).
  */
 async function cadastrarCliente(dados = {}) {
   const email = validarEmail(dados.email);
@@ -157,11 +126,6 @@ async function cadastrarCliente(dados = {}) {
   };
 }
 
-/**
- * Normaliza o tipo de usuário aceitando 'cliente', 'funcionario', 'interno' ou 'admin'.
- * @param {string} tipoBruto
- * @returns {'cliente' | 'funcionario' | 'admin'}
- */
 function normalizarTipoUsuario(tipoBruto) {
   const t = String(tipoBruto || 'cliente')
     .trim()
@@ -182,9 +146,6 @@ function normalizarTipoUsuario(tipoBruto) {
 
 /**
  * Cria um novo usuário (cliente ou funcionário/admin) a partir do painel administrativo.
- *
- * @param {object} dados
- * @returns {Promise<object>} Usuário criado formatado
  */
 async function criarUsuarioPeloAdmin(dados = {}) {
   const email = validarEmail(dados.email);
@@ -229,15 +190,20 @@ async function criarUsuarioPeloAdmin(dados = {}) {
 }
 
 /**
- * Lista usuários para o painel administrativo, separando também em `internos` e `clientes`
- * conforme a tela "Administrador - usuários" (143:838) do Figma.
- *
- * @param {object} [filtros]
- * @returns {Promise<{ internos: object[], clientes: object[], todos: object[], total: number }>}
+ * Lista usuários para o painel administrativo, separando em `internos` e `clientes`
+ * e suportando os filtros (`bi:filter`) da tela "Administrador - usuários" (143:838).
  */
 async function listarUsuariosAdmin(filtros = {}) {
   const listaBruta = await repositorio.listarUsuarios(filtros);
   const todos = listaBruta.map(formatarUsuarioParaResposta);
+
+  if (filtros.ordenar === 'nome') {
+    todos.sort((a, b) => String(a.nome || '').localeCompare(String(b.nome || ''), 'pt-BR'));
+  } else if (filtros.ordenar === 'ultimo_acesso') {
+    todos.sort(
+      (a, b) => new Date(b.ultimo_acesso || 0).getTime() - new Date(a.ultimo_acesso || 0).getTime()
+    );
+  }
 
   const internos = todos.filter((u) => u.tipo === 'admin' || u.tipo === 'funcionario');
   const clientes = todos.filter((u) => u.tipo === 'cliente');
@@ -246,14 +212,12 @@ async function listarUsuariosAdmin(filtros = {}) {
     internos,
     clientes,
     todos,
+    totalInternos: internos.length,
+    totalClientes: clientes.length,
     total: todos.length,
   };
 }
 
-/**
- * Obtém detalhes de um usuário específico pelo ID.
- * @param {number|string} id
- */
 async function buscarUsuarioPorIdCore(id) {
   const idValido = validarId(id, 'ID do usuário');
   const usuario = await repositorio.buscarUsuarioPorId(idValido);
@@ -263,13 +227,6 @@ async function buscarUsuarioPorIdCore(id) {
   return formatarUsuarioParaResposta(usuario);
 }
 
-/**
- * Atualiza dados de um usuário (seja o próprio cliente editando perfil ou o admin gerenciando).
- *
- * @param {number|string} idAlvo
- * @param {object} dados
- * @param {object} [usuarioSolicitante]
- */
 async function atualizarUsuarioCore(idAlvo, dados = {}, usuarioSolicitante = null) {
   const id = validarId(idAlvo, 'ID do usuário');
   const usuarioAtual = await repositorio.buscarUsuarioPorId(id);
@@ -325,7 +282,6 @@ async function atualizarUsuarioCore(idAlvo, dados = {}, usuarioSolicitante = nul
     camposParaAtualizar.foto_webp = null;
   }
 
-  // Campos exclusivos de administração (tipo, cargo, ativo)
   if (solicitanteEhAdmin) {
     if (dados.tipo !== undefined) {
       camposParaAtualizar.tipo = normalizarTipoUsuario(dados.tipo);
@@ -347,12 +303,6 @@ async function atualizarUsuarioCore(idAlvo, dados = {}, usuarioSolicitante = nul
   return formatarUsuarioParaResposta(atualizado);
 }
 
-/**
- * Alterna ou define o status ativo/inativo de um usuário (Admin).
- * @param {number|string} idAlvo
- * @param {boolean|undefined} statusDesejado
- * @param {object} usuarioSolicitante
- */
 async function alterarStatusUsuarioCore(idAlvo, statusDesejado, usuarioSolicitante) {
   const id = validarId(idAlvo, 'ID do usuário');
   const usuarioAtual = await repositorio.buscarUsuarioPorId(id);
@@ -371,11 +321,6 @@ async function alterarStatusUsuarioCore(idAlvo, statusDesejado, usuarioSolicitan
   return formatarUsuarioParaResposta(atualizado);
 }
 
-/**
- * Remove um usuário do sistema (Admin).
- * @param {number|string} idAlvo
- * @param {object} usuarioSolicitante
- */
 async function removerUsuarioCore(idAlvo, usuarioSolicitante) {
   const id = validarId(idAlvo, 'ID do usuário');
   if (usuarioSolicitante && String(usuarioSolicitante.id) === String(id)) {

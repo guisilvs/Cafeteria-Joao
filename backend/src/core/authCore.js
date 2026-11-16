@@ -6,7 +6,8 @@
  * - Geração de hash de senhas com `bcrypt`
  * - Comparação segura de senhas com hash
  * - Emissão e validação de tokens JWT para sessões de clientes e administradores
- * - Validação de login por E-mail ou Telefone (conforme protótipo do Figma)
+ * - Validação de login por E-mail ou Telefone (conforme telas 82:113 e 143:145 do Figma)
+ * - Recuperação/redefinição de senha ("Esqueceu sua senha?" na tela 82:113 do Figma)
  * - Verificação de permissões de acesso (Cliente vs Funcionário/Admin)
  */
 
@@ -15,6 +16,8 @@ const jwt = require('jsonwebtoken');
 const repositorio = require('./repositorioCore');
 const {
   normalizarIdentificadorLogin,
+  validarEmail,
+  validarTelefone,
   validarSenha,
 } = require('./validacaoCore');
 const {
@@ -29,16 +32,24 @@ const JWT_SECRET = process.env.JWT_SECRET || 'cafeteria_do_joao_chave_secreta_pa
 const JWT_EXPIRES_IN = process.env.JWT_EXPIRES_IN || '24h';
 
 /**
- * Remove campos sensíveis (como `senha_hash`) antes de retornar o objeto de usuário para a API.
+ * Remove campos sensíveis (como `senha_hash`) antes de retornar o objeto de usuário para a API,
+ * e adiciona rótulos úteis para as telas de Cliente ("Olá, Guilherme Silveira") e Admin ("Operador Guilherme Silveira").
  * @param {object} usuario
  * @returns {object|null}
  */
 function sanitizarUsuarioPublico(usuario) {
   if (!usuario) return null;
   const { senha_hash, senha, ...dadosSeguros } = usuario;
+  const ehAdmin = dadosSeguros.tipo === 'admin' || dadosSeguros.tipo === 'funcionario';
+
   return {
     ...dadosSeguros,
-    eh_admin: dadosSeguros.tipo === 'admin' || dadosSeguros.tipo === 'funcionario',
+    eh_admin: ehAdmin,
+    saudacao_cliente: `Olá, ${dadosSeguros.nome}`,
+    cargo_exibicao: ehAdmin ? dadosSeguros.cargo || 'Operador' : 'Cliente',
+    titulo_operador_admin: ehAdmin
+      ? `${dadosSeguros.cargo || 'Operador'} ${dadosSeguros.nome}`
+      : dadosSeguros.nome,
   };
 }
 
@@ -173,11 +184,44 @@ async function autenticarUsuario(credenciais = {}) {
     };
 
   const token = gerarToken(usuarioAtualizado);
+  const usuarioPublico = await enriquecerUsuarioComIndicadores(usuarioAtualizado);
 
   return {
     token,
-    usuario: sanitizarUsuarioPublico(usuarioAtualizado),
+    usuario: usuarioPublico,
   };
+}
+
+/**
+ * Adiciona indicadores de notificação para as bolinhas de alerta do protótipo:
+ * - Visão Usuário (Tela 17:132 `Ellipse 1`): `possui_pedido_em_andamento`
+ * - Visão Admin (Tela 143:146 `Ellipse 2`): `possui_pedidos_pendentes`
+ * @param {object} usuario
+ */
+async function enriquecerUsuarioComIndicadores(usuario) {
+  const base = sanitizarUsuarioPublico(usuario);
+  if (!base) return null;
+
+  try {
+    const pedidosEmAndamentoCliente = await repositorio.listarPedidos({
+      usuarioId: base.id,
+      apenasEmAndamento: true,
+    });
+
+    base.possui_pedido_em_andamento = pedidosEmAndamentoCliente.length > 0;
+    base.quantidade_pedidos_em_andamento = pedidosEmAndamentoCliente.length;
+
+    if (base.eh_admin) {
+      const todosPendentes = await repositorio.listarPedidos({ apenasEmAndamento: true });
+      base.possui_pedidos_pendentes = todosPendentes.length > 0;
+      base.total_pedidos_pendentes = todosPendentes.length;
+    }
+  } catch {
+    base.possui_pedido_em_andamento = false;
+    base.quantidade_pedidos_em_andamento = 0;
+  }
+
+  return base;
 }
 
 /**
@@ -193,11 +237,53 @@ async function obterUsuarioAutenticado(usuarioId) {
   if (usuario.ativo === false) {
     throw erroProibido('Conta de usuário desativada.');
   }
-  return sanitizarUsuarioPublico(usuario);
+  return enriquecerUsuarioComIndicadores(usuario);
+}
+
+/**
+ * Permite ao usuário redefinir sua senha ("Esqueceu sua senha?" - tela 82:113 do Figma)
+ * confirmando seu E-mail + Telefone cadastrado + Nova Senha.
+ *
+ * @param {object} dados
+ * @param {string} dados.email
+ * @param {string} dados.telefone
+ * @param {string} dados.novaSenha
+ * @param {string} [dados.confirmarSenha]
+ */
+async function redefinirSenhaPorConfirmacao(dados = {}) {
+  const email = validarEmail(dados.email);
+  const telefone = validarTelefone(dados.telefone, true);
+  const novaSenha = dados.novaSenha || dados.senha;
+  const confirmarSenha =
+    dados.confirmarSenha !== undefined ? dados.confirmarSenha : dados.confirmar_senha;
+
+  validarSenha(novaSenha, confirmarSenha);
+
+  const usuario = await repositorio.buscarUsuarioPorEmail(email);
+  const telCadastrado = usuario ? String(usuario.telefone || '').replace(/\D/g, '') : '';
+
+  if (!usuario || telCadastrado !== telefone) {
+    throw erroNaoAutorizado(
+      'Não foi possível validar os dados informados. Verifique seu e-mail e telefone cadastrados.'
+    );
+  }
+
+  if (usuario.ativo === false) {
+    throw erroProibido('Esta conta está inativa.');
+  }
+
+  const novoHash = await gerarHashSenha(novaSenha);
+  await repositorio.atualizarUsuario(usuario.id, { senha_hash: novoHash });
+
+  return {
+    redefinida: true,
+    email: usuario.email,
+  };
 }
 
 module.exports = {
   sanitizarUsuarioPublico,
+  enriquecerUsuarioComIndicadores,
   gerarHashSenha,
   verificarSenha,
   gerarToken,
@@ -205,4 +291,5 @@ module.exports = {
   usuarioEhAdminOuFuncionario,
   autenticarUsuario,
   obterUsuarioAutenticado,
+  redefinirSenhaPorConfirmacao,
 };
