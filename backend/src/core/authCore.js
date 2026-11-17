@@ -145,6 +145,11 @@ async function autenticarUsuario(credenciais = {}) {
     throw erroValidacao('Informe sua senha.');
   }
 
+  if (!repositorio.verificarStatusBanco().postgresConectado) {
+    const { AppError } = require('./errosCore');
+    throw new AppError('Não conectado no banco de dados', 503, 'BANCO_DESCONECTADO');
+  }
+
   const { tipo, valor } = normalizarIdentificadorLogin(identificadorBruto);
 
   let usuario = null;

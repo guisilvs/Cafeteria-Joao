@@ -5,6 +5,7 @@
 
 const cardapioCore = require('../../core/cardapioCore');
 const siteCore = require('../../core/siteCore');
+const repositorioCore = require('../../core/repositorioCore');
 const { asyncHandler } = require('../middlewares/errorMiddleware');
 
 // ============================================================================
@@ -18,6 +19,7 @@ const { asyncHandler } = require('../middlewares/errorMiddleware');
  * `possui_pedido_em_andamento` para exibir a bolinha de notificação na foto de perfil (tela 17:132).
  */
 const obterCardapioPublico = asyncHandler(async (req, res) => {
+  const statusBanco = repositorioCore.verificarStatusBanco();
   const resultado = await cardapioCore.obterCardapioPublicoCore({
     categoriaId: req.query.categoria_id || req.query.categoriaId,
     categoria: req.query.categoria,
@@ -27,6 +29,7 @@ const obterCardapioPublico = asyncHandler(async (req, res) => {
 
   res.status(200).json({
     sucesso: true,
+    banco_conectado: statusBanco.postgresConectado,
     ...resultado,
     usuario_logado: Boolean(req.usuario),
     possui_pedido_em_andamento: req.usuario

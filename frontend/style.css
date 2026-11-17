@@ -565,7 +565,17 @@ body.cliente-body {
   display: flex;
   align-items: center;
   justify-content: space-around;
-  padding: 0 12px;
+  padding: 0 8px;
+}
+
+.nav-capsula-liquid > *,
+.nav-capsula-inner {
+  display: flex !important;
+  flex-direction: row !important;
+  align-items: center !important;
+  justify-content: space-around !important;
+  width: 100%;
+  height: 100%;
 }
 
 .nav-botao {
@@ -1488,15 +1498,22 @@ body.admin-body {
 /* Tela Criar / Editar Produto com Pré-visualização (Node 161:294) */
 .editor-produto-grid {
   display: flex;
-  flex-wrap: wrap;
-  gap: 36px;
+  flex-wrap: nowrap;
+  gap: 24px;
   align-items: flex-start;
   margin-top: 20px;
 }
 
+@media (max-width: 1080px) {
+  .editor-produto-grid {
+    flex-wrap: wrap;
+  }
+}
+
 .box-upload-foto-produto {
-  width: 242px;
+  width: 224px;
   height: 298px;
+  flex-shrink: 0;
   border: 1px solid #000000;
   border-radius: 42px;
   display: flex;
@@ -1523,7 +1540,9 @@ body.admin-body {
 }
 
 .form-campos-produto {
-  width: 416px;
+  flex: 1;
+  min-width: 270px;
+  max-width: 390px;
   display: flex;
   flex-direction: column;
   gap: 16px;
@@ -1678,4 +1697,61 @@ body.admin-body {
     opacity: 1;
     transform: translateY(0);
   }
+}
+
+
+/* ==========================================================================
+   INDICADOR DE CONEXÃO COM O BANCO DE DADOS ("Não conectado no banco de dados")
+   ========================================================================== */
+
+.aviso-centro-sem-banco {
+  grid-column: 1 / -1;
+  width: 100%;
+  min-height: 260px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  color: rgba(0, 0, 0, 0.48);
+  font-size: 16px;
+  font-weight: 600;
+  padding: 32px 16px;
+}
+
+.rodape-status-banco-sutil {
+  width: 100%;
+  text-align: center;
+  font-size: 11.5px;
+  font-weight: 500;
+  color: rgba(0, 0, 0, 0.42);
+  padding: 8px 12px;
+  letter-spacing: 0.2px;
+  pointer-events: none;
+}
+
+/* Refinamentos Visuais Fiéis ao Protótipo do Figma */
+.sacola-cabecalho-limpo {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  margin: 6px 0 24px;
+}
+
+.sacola-cabecalho-limpo .sacola-avatar {
+  width: 50px;
+  height: 50px;
+  border-radius: 50%;
+  box-shadow: 0 7px 13.1px rgba(0, 0, 0, 0.09);
+}
+
+.marca-dagua-grao-svg {
+  position: fixed;
+  right: -90px;
+  bottom: -90px;
+  width: 680px;
+  height: 680px;
+  opacity: 0.055;
+  pointer-events: none;
+  z-index: 0;
 }

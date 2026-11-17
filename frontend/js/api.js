@@ -92,6 +92,15 @@ const Api = {
   limparToken,
   lerArquivoComoBase64,
 
+  async verificarStatusBanco() {
+    try {
+      const res = await requisitar('/health', { metodo: 'GET', modo: 'cliente' });
+      return Boolean(res.bancoDeDados?.postgresConectado);
+    } catch {
+      return false;
+    }
+  },
+
   // ==========================================================================
   // 1. AUTENTICAÇÃO E PERFIL (CLIENTE E ADMIN)
   // ==========================================================================

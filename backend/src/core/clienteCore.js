@@ -110,6 +110,8 @@ async function cadastrarCliente(dados = {}) {
     nome,
     email,
     telefone,
+    cpf: dados.cpf || null,
+    data_nascimento: dados.data_nascimento || dados.dataNascimento || null,
     senha_hash,
     tipo: 'cliente',
     cargo: null,
@@ -179,6 +181,8 @@ async function criarUsuarioPeloAdmin(dados = {}) {
     nome,
     email,
     telefone,
+    cpf: dados.cpf || null,
+    data_nascimento: dados.data_nascimento || dados.dataNascimento || null,
     senha_hash,
     tipo,
     cargo,
@@ -272,6 +276,10 @@ async function atualizarUsuarioCore(idAlvo, dados = {}, usuarioSolicitante = nul
 
   if (dados.login !== undefined) {
     camposParaAtualizar.login = dados.login ? limparTextoSimples(dados.login) : null;
+  }
+
+  if (dados.cpf !== undefined) {
+    camposParaAtualizar.cpf = dados.cpf ? limparTextoSimples(dados.cpf) : null;
   }
 
   if (dados.senha) {

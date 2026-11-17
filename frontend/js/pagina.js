@@ -9,7 +9,7 @@
     'data:image/svg+xml;utf8,' +
     encodeURIComponent(
       `<svg xmlns="http://www.w3.org/2000/svg" width="200" height="200" viewBox="0 0 200 200">
-        <rect width="200" height="200" rx="28" fill="#f3e9dc"/>
+        <rect width="200" height="200" rx="28" fill="#ffffff"/>
         <text x="50%" y="54%" dominant-baseline="middle" text-anchor="middle" font-size="64">☕</text>
       </svg>`
     );
@@ -24,8 +24,17 @@
       </svg>`
     );
 
+  const SVG_SACOLA_MAIS = `<svg width="20" height="21" viewBox="0 0 21 22" fill="none" xmlns="http://www.w3.org/2000/svg">
+    <path d="M15.5 6V5C15.5 2.79086 13.7091 1 11.5 1H9.5C7.29086 1 5.5 2.79086 5.5 5V6H2.5C1.67157 6 1 6.67157 1 7.5V18.5C1 20.1569 2.34315 21.5 4 21.5H17C18.6569 21.5 20 20.1569 20 18.5V7.5C20 6.67157 19.3284 6 18.5 6H15.5ZM7.5 5C7.5 3.89543 8.39543 3 9.5 3H11.5C12.6046 3 13.5 3.89543 13.5 5V6H7.5V5ZM11.5 11V13H13.5V15H11.5V17H9.5V15H7.5V13H9.5V11H11.5Z" fill="white"/>
+  </svg>`;
+
+  const SVG_CAFETEIRA_PEDIDO = `<svg width="64" height="64" viewBox="0 0 24 24" fill="#8b4f00" xmlns="http://www.w3.org/2000/svg">
+    <path d="M18 3H6C4.9 3 4 3.9 4 5v14c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2v-1c0-.55-.45-1-1-1H7V7h2v1c0 .55.45 1 1 1h4c.55 0 1-.45 1-1V7h3c.55 0 1-.45 1-1V4c0-.55-.45-1-1-1zm-6 7.5c-.55 0-1 .45-1 1s.45 1 1 1 1-.45 1-1-.45-1-1-1zm0 2.5c-1.93 0-3.5 1.57-3.5 3.5V18h7v-1.5c0-1.93-1.57-3.5-3.5-3.5z"/>
+  </svg>`;
+
   const estado = {
-    abaAtual: 'cardapio', // 'cardapio' | 'favoritos' | 'pedido' | 'pedido_realizado'
+    bancoConectado: true,
+    abaAtual: 'cardapio',
     categorias: [],
     categoriaSelecionadaId: null,
     itensCardapio: [],
@@ -43,9 +52,13 @@
     fotoCadastroBase64: null,
   };
 
-  // ==========================================================================
-  // UTILITÁRIOS VISUAIS
-  // ==========================================================================
+  function atualizarIndicadorBanco(conectado) {
+    estado.bancoConectado = Boolean(conectado);
+    const rodape = document.getElementById('rodapeStatusBancoCliente');
+    if (rodape) {
+      rodape.style.display = estado.bancoConectado ? 'none' : 'block';
+    }
+  }
 
   function mostrarToast(mensagem, tipo = 'padrao') {
     const container = document.getElementById('toastContainer');
@@ -109,6 +122,8 @@
   async function carregarCardapioDoBanco() {
     try {
       const dados = await window.CafeteriaApi.obterCardapio();
+      atualizarIndicadorBanco(dados.banco_conectado !== false);
+
       estado.categorias = Array.isArray(dados.categorias) ? dados.categorias : [];
       estado.itensCardapio = Array.isArray(dados.itens) ? dados.itens : [];
 
@@ -127,8 +142,12 @@
 
       renderizarPillsCategorias();
       renderizarGradeProdutos();
-    } catch (erro) {
-      mostrarToast(erro.message || 'Erro ao carregar cardápio.', 'erro');
+    } catch {
+      atualizarIndicadorBanco(false);
+      estado.categorias = [];
+      estado.itensCardapio = [];
+      renderizarPillsCategorias();
+      renderizarGradeProdutos();
     }
   }
 
@@ -164,7 +183,7 @@
         }
       }
     } catch {
-      // Silencioso caso não autenticado
+      // Silencioso
     }
   }
 
@@ -197,6 +216,7 @@
 
     estado.categorias.forEach((cat) => {
       const btn = document.createElement('button');
+      btn.type = 'button';
       const ativa = String(cat.id) === String(estado.categoriaSelecionadaId);
       btn.className = `liquid-glass pill-categoria ${ativa ? 'ativa' : ''}`;
       btn.textContent = cat.nome;
@@ -213,6 +233,12 @@
     const grade = document.getElementById('gradeProdutos');
     if (!grade) return;
 
+    // Caso não esteja conectado no banco de dados e não haja itens para exibir, mostra mensagem no centro da tela
+    if (!estado.bancoConectado && estado.itensCardapio.length === 0) {
+      grade.innerHTML = `<div class="aviso-centro-sem-banco">Não conectado no banco de dados</div>`;
+      return;
+    }
+
     const baseItens =
       estado.abaAtual === 'favoritos' ? estado.itensFavoritos : estado.itensCardapio;
 
@@ -226,7 +252,7 @@
           <p style="font-size: 15px; font-weight: 600; margin-bottom: 14px;">
             Faça login para salvar e visualizar seus produtos favoritos!
           </p>
-          <button class="btn-primario-marrom" onclick="window.AppCliente.abrirPainelConta()">
+          <button type="button" class="btn-primario-marrom" onclick="window.AppCliente.abrirPainelConta()">
             Fazer login
           </button>
         </div>
@@ -275,7 +301,7 @@
               onclick="window.AppCliente.adicionarAoPedido(${item.id})"
             >
               <span class="btn-adicionar-esquerda">
-                <i class="fa-solid fa-bag-shopping"></i>
+                ${SVG_SACOLA_MAIS}
                 <span class="btn-adicionar-texto">Adicionar<br/>ao pedido</span>
               </span>
               <span class="btn-adicionar-preco">${escaparHtml(item.preco_formatado)}</span>
@@ -402,6 +428,11 @@
     const listaEl = document.getElementById('listaItensSacola');
     const totalEl = document.getElementById('textoTotalSacola');
 
+    if (!estado.bancoConectado) {
+      listaEl.innerHTML = `<div class="aviso-centro-sem-banco">Não conectado no banco de dados</div>`;
+      return;
+    }
+
     if (!estado.usuario) {
       fotoCli.style.display = 'none';
       iconeCli.style.display = 'block';
@@ -412,21 +443,15 @@
       listaEl.innerHTML = `
         <div style="text-align: center; padding: 36px 12px;">
           <p style="font-size: 14px; margin-bottom: 14px;">Entre na sua conta para montar e enviar seu pedido.</p>
-          <button class="btn-primario-marrom" onclick="window.AppCliente.abrirPainelConta()">Fazer login</button>
+          <button type="button" class="btn-primario-marrom" onclick="window.AppCliente.abrirPainelConta()">Fazer login</button>
         </div>
       `;
       return;
     }
 
-    if (estado.usuario.foto_webp) {
-      fotoCli.src = estado.usuario.foto_webp;
-      fotoCli.style.display = 'block';
-      iconeCli.style.display = 'none';
-    } else {
-      fotoCli.src = AVATAR_PADRAO;
-      fotoCli.style.display = 'block';
-      iconeCli.style.display = 'none';
-    }
+    fotoCli.src = estado.usuario.foto_webp || AVATAR_PADRAO;
+    fotoCli.style.display = 'block';
+    iconeCli.style.display = 'none';
 
     txtPara.textContent = estado.sacola.para_label || `Para: ${estado.usuario.nome}`;
     txtUnidade.textContent = estado.sacola.unidade_label || 'Unidade: Shopping Beira Mar';
@@ -438,7 +463,7 @@
       listaEl.innerHTML = `
         <div style="text-align: center; padding: 36px 12px; color: #333;">
           <p style="font-size: 14px; margin-bottom: 12px;">Seu pedido ainda está vazio.</p>
-          <button class="liquid-glass btn-limpar-pedido" onclick="window.AppCliente.mudarAba('cardapio')">
+          <button type="button" class="liquid-glass btn-limpar-pedido" onclick="window.AppCliente.mudarAba('cardapio')">
             Ver cardápio
           </button>
         </div>
@@ -590,6 +615,12 @@
     const contAndamento = document.getElementById('containerPedidosAndamento');
     const contHistorico = document.getElementById('containerPedidosHistorico');
 
+    if (!estado.bancoConectado) {
+      contAndamento.innerHTML = `<div class="aviso-centro-sem-banco">Não conectado no banco de dados</div>`;
+      contHistorico.innerHTML = '';
+      return;
+    }
+
     contAndamento.innerHTML = '<p style="font-size: 13px; color: #666;">Carregando pedidos...</p>';
     contHistorico.innerHTML = '';
 
@@ -611,7 +642,7 @@
             <div class="card-pedido-cliente ativo">
               <span class="badge-status-pedido preparando">${escaparHtml(p.status_label)}</span>
               <div class="card-pedido-topo">
-                <i class="fa-solid fa-mug-hot icone-cafeteira"></i>
+                ${SVG_CAFETEIRA_PEDIDO}
                 <div>
                   <strong style="font-size: 16px; display: block;">${escaparHtml(p.codigo_formatado)}</strong>
                   <span style="font-size: 13px;">Previsão de retirada:<br/>${p.previsao_minutos} minutos</span>
@@ -698,7 +729,7 @@
 
   async function submeterCadastro(evento) {
     evento.preventDefault();
-    const nome = document.getElementById('inputCadastroNome').value.trim();
+    const nome = document.getElementById('inputCadastroNome')?.value.trim() || '';
     const email = document.getElementById('inputCadastroEmail').value.trim();
     const telefone = document.getElementById('inputCadastroTelefone').value.trim();
     const senha = document.getElementById('inputCadastroSenha').value;
@@ -706,7 +737,7 @@
 
     try {
       const res = await window.CafeteriaApi.registrarCliente({
-        nome,
+        nome: nome || undefined,
         email,
         telefone,
         senha,
@@ -773,7 +804,6 @@
     mostrarToast('Você saiu da sua conta.');
   }
 
-  // Exporta funções para os handlers inline do HTML
   window.AppCliente = {
     mudarAba,
     alternarFavorito,
@@ -793,8 +823,9 @@
     fazerLogoff,
   };
 
-  // Inicialização automática ao abrir a página
   document.addEventListener('DOMContentLoaded', async () => {
+    const conectado = await window.CafeteriaApi.verificarStatusBanco();
+    atualizarIndicadorBanco(conectado);
     await carregarSessaoUsuario();
     await carregarCardapioDoBanco();
     await carregarSacolaDoBanco();

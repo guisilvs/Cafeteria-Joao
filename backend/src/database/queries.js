@@ -1,428 +1,238 @@
-const pool = require('./db'); // Conexão com o banco de dados PostgreSQL
+/**
+ * @file queries.js
+ * @description Consultas SQL (SELECT, INSERT, UPDATE, DELETE) operando sobre as 8 tabelas
+ * da modelagem oficial no PostgreSQL:
+ * 1. Cliente
+ * 2. Funcionario
+ * 3. Categoria
+ * 4. Produto
+ * 5. Pedido
+ * 6. Item_Pedido
+ * 7. Pagamento
+ * 8. Favorito
+ */
+
+const pool = require('./db');
+const {
+  normalizarOuGerarCpf,
+  mapearCategoriaDoBanco,
+  mapearProdutoDoBanco,
+  mapearClienteDoBanco,
+  mapearFuncionarioDoBanco,
+  mapearPedidoDoBanco,
+} = require('./modelMapper');
+
+// Sacola temporária por sessão de usuário (antes de gravar nas tabelas Pedido + Item_Pedido + Pagamento)
+const sacolasTemporarias = new Map();
 
 // ============================================================================
-// FUNÇÕES AUXILIARES DE NORMALIZAÇÃO DE TIPOS DO POSTGRESQL
+// 1. CATEGORIAS (Tabela: Categoria)
 // ============================================================================
 
-function normalizarProduto(row) {
-  if (!row) return null;
-  return {
-    ...row,
-    preco: Number(row.preco),
-    oculto: Boolean(row.oculto),
-  };
+async function listarCategorias(apenasAtivas = false) {
+  const query = apenasAtivas
+    ? 'SELECT * FROM Categoria WHERE Ativo = TRUE ORDER BY COALESCE(Ordem_exibicao, id_categoria) ASC, id_categoria ASC;'
+    : 'SELECT * FROM Categoria ORDER BY COALESCE(Ordem_exibicao, id_categoria) ASC, id_categoria ASC;';
+  const result = await pool.query(query);
+  return result.rows.map(mapearCategoriaDoBanco);
 }
 
-function normalizarUsuario(row) {
-  if (!row) return null;
-  return {
-    ...row,
-    ativo: row.ativo !== false,
-    precisa_trocar_senha: Boolean(row.precisa_trocar_senha),
-    favoritos: Array.isArray(row.favoritos) ? row.favoritos : [],
-  };
+async function buscarCategoriaPorId(identificador) {
+  const comoNumero = Number(identificador);
+  if (
+    Number.isInteger(comoNumero) &&
+    comoNumero > 0 &&
+    String(comoNumero) === String(identificador).trim()
+  ) {
+    const resId = await pool.query('SELECT * FROM Categoria WHERE id_categoria = $1;', [comoNumero]);
+    if (resId.rows[0]) return mapearCategoriaDoBanco(resId.rows[0]);
+  }
+
+  const texto = String(identificador || '').trim();
+  const resNome = await pool.query('SELECT * FROM Categoria WHERE LOWER(Nome) = LOWER($1) LIMIT 1;', [
+    texto,
+  ]);
+  return mapearCategoriaDoBanco(resNome.rows[0]);
 }
 
-function normalizarPedido(row) {
-  if (!row) return null;
-  return {
-    ...row,
-    numero: row.numero || row.id,
-    total: Number(row.total),
-    itens: Array.isArray(row.itens) ? row.itens : [],
-  };
+async function criarCategoria(categoria) {
+  const query = `
+    INSERT INTO Categoria (Nome, Ordem_exibicao, Ativo)
+    VALUES ($1, COALESCE($2, (SELECT COALESCE(MAX(Ordem_exibicao), 0) + 1 FROM Categoria)), $3)
+    RETURNING *;
+  `;
+  const ordem = categoria.ordem ?? categoria.ordem_exibicao ?? null;
+  const values = [categoria.nome, ordem !== null ? Number(ordem) : null, categoria.ativo !== false];
+  const result = await pool.query(query, values);
+  return mapearCategoriaDoBanco(result.rows[0]);
+}
+
+async function atualizarCategoria(id, categoria) {
+  const query = `
+    UPDATE Categoria
+    SET
+      Nome = COALESCE($1, Nome),
+      Ordem_exibicao = COALESCE($2, Ordem_exibicao),
+      Ativo = COALESCE($3, Ativo)
+    WHERE id_categoria = $4
+    RETURNING *;
+  `;
+  const ordem = categoria.ordem ?? categoria.ordem_exibicao;
+  const values = [
+    categoria.nome !== undefined ? categoria.nome : null,
+    ordem !== undefined ? Number(ordem) : null,
+    categoria.ativo !== undefined ? Boolean(categoria.ativo) : null,
+    Number(id),
+  ];
+  const result = await pool.query(query, values);
+  return mapearCategoriaDoBanco(result.rows[0]);
+}
+
+async function deletarCategoria(id) {
+  const query = 'DELETE FROM Categoria WHERE id_categoria = $1 RETURNING *;';
+  const result = await pool.query(query, [Number(id)]);
+  return mapearCategoriaDoBanco(result.rows[0]);
 }
 
 // ============================================================================
-// 1. PRODUTOS DO CARDÁPIO (Tabela: Produto)
+// 2. PRODUTOS DO CARDÁPIO (Tabela: Produto)
 // ============================================================================
 
-// Busca todos os produtos do cardápio (com suporte aos filtros do sistema)
 async function listarItensCardapio(filtros = {}) {
   const { categoriaId, categoriaNome, incluirOcultos = false, busca } = filtros;
   const condicoes = [];
   const valores = [];
 
   if (!incluirOcultos) {
-    condicoes.push('p.oculto = FALSE');
+    condicoes.push('p.Oculto = FALSE');
   }
 
   if (categoriaId !== undefined && categoriaId !== null && categoriaId !== '') {
     valores.push(Number(categoriaId));
-    condicoes.push(`p.categoria_id = $${valores.length}`);
+    condicoes.push(`p.id_categoria = $${valores.length}`);
   }
 
   if (categoriaNome) {
     valores.push(String(categoriaNome).trim());
-    condicoes.push(`LOWER(c.nome) = LOWER($${valores.length})`);
+    condicoes.push(`LOWER(c.Nome) = LOWER($${valores.length})`);
   }
 
   if (busca) {
     valores.push(`%${String(busca).trim()}%`);
-    condicoes.push(`(p.nome ILIKE $${valores.length} OR p.descricao ILIKE $${valores.length})`);
+    condicoes.push(`(p.Nome ILIKE $${valores.length} OR COALESCE(p.Descricao, '') ILIKE $${valores.length})`);
   }
 
   const whereSql = condicoes.length > 0 ? `WHERE ${condicoes.join(' AND ')}` : '';
   const query = `
-    SELECT p.*, c.nome AS categoria_nome
+    SELECT p.*, c.Nome AS categoria_nome
     FROM Produto p
-    LEFT JOIN Categoria c ON c.id = p.categoria_id
+    LEFT JOIN Categoria c ON c.id_categoria = p.id_categoria
     ${whereSql}
-    ORDER BY p.id ASC;
+    ORDER BY p.id_produto ASC;
   `;
 
   const result = await pool.query(query, valores);
-  return result.rows.map(normalizarProduto);
+  return result.rows.map(mapearProdutoDoBanco);
 }
 
-// Busca um único produto pelo ID
 async function buscarItemCardapioPorId(id) {
   const query = `
-    SELECT p.*, c.nome AS categoria_nome
+    SELECT p.*, c.Nome AS categoria_nome
     FROM Produto p
-    LEFT JOIN Categoria c ON c.id = p.categoria_id
-    WHERE p.id = $1;
+    LEFT JOIN Categoria c ON c.id_categoria = p.id_categoria
+    WHERE p.id_produto = $1;
   `;
   const result = await pool.query(query, [Number(id)]);
-  return normalizarProduto(result.rows[0]);
+  return mapearProdutoDoBanco(result.rows[0]);
 }
 
-// Cria um novo produto no banco e devolve os dados do item criado
 async function criarProduto(produto) {
   const query = `
-    INSERT INTO Produto (categoria_id, nome, descricao, preco, foto_webp, oculto)
+    INSERT INTO Produto (id_categoria, Nome, Descricao, Preco, Imagem_url, Oculto)
     VALUES ($1, $2, $3, $4, $5, $6)
-    RETURNING *;
+    RETURNING id_produto;
   `;
+  const catId = Number(produto.categoria_id ?? produto.id_categoria);
+  const imagem = produto.foto_webp ?? produto.imagem_url ?? null;
   const values = [
-    Number(produto.categoria_id),
+    catId,
     produto.nome,
-    produto.descricao || '',
+    String(produto.descricao || '').slice(0, 255),
     Number(produto.preco),
-    produto.foto_webp || null,
+    imagem,
     Boolean(produto.oculto),
   ];
   const result = await pool.query(query, values);
-  return buscarItemCardapioPorId(result.rows[0].id);
+  return buscarItemCardapioPorId(result.rows[0].id_produto);
 }
 
-// Atualiza os dados de um produto existente baseado no ID dele (suporta atualização parcial ou completa)
 async function atualizarProduto(id, produto) {
+  const alterarImagem =
+    Object.prototype.hasOwnProperty.call(produto, 'foto_webp') ||
+    Object.prototype.hasOwnProperty.call(produto, 'imagem_url');
+  const novaImagem = produto.foto_webp ?? produto.imagem_url ?? null;
+  const catId = produto.categoria_id ?? produto.id_categoria;
+
   const query = `
     UPDATE Produto
     SET
-      categoria_id = COALESCE($1, categoria_id),
-      nome = COALESCE($2, nome),
-      descricao = COALESCE($3, descricao),
-      preco = COALESCE($4, preco),
-      foto_webp = CASE WHEN $5::boolean THEN $6 ELSE foto_webp END,
-      oculto = COALESCE($7, oculto)
-    WHERE id = $8
-    RETURNING *;
+      id_categoria = COALESCE($1, id_categoria),
+      Nome = COALESCE($2, Nome),
+      Descricao = COALESCE($3, Descricao),
+      Preco = COALESCE($4, Preco),
+      Imagem_url = CASE WHEN $5::boolean THEN $6 ELSE Imagem_url END,
+      Oculto = COALESCE($7, Oculto)
+    WHERE id_produto = $8
+    RETURNING id_produto;
   `;
-  const alterarFoto = Object.prototype.hasOwnProperty.call(produto, 'foto_webp');
   const values = [
-    produto.categoria_id !== undefined ? Number(produto.categoria_id) : null,
+    catId !== undefined ? Number(catId) : null,
     produto.nome !== undefined ? produto.nome : null,
-    produto.descricao !== undefined ? produto.descricao : null,
+    produto.descricao !== undefined ? String(produto.descricao).slice(0, 255) : null,
     produto.preco !== undefined ? Number(produto.preco) : null,
-    alterarFoto,
-    alterarFoto ? produto.foto_webp : null,
+    alterarImagem,
+    alterarImagem ? novaImagem : null,
     produto.oculto !== undefined ? Boolean(produto.oculto) : null,
     Number(id),
   ];
   const result = await pool.query(query, values);
   if (!result.rows[0]) return null;
-  return buscarItemCardapioPorId(result.rows[0].id);
+  return buscarItemCardapioPorId(result.rows[0].id_produto);
 }
 
-// Remove um produto do cardápio baseado no ID
 async function deletarProduto(id) {
-  const query = 'DELETE FROM Produto WHERE id = $1 RETURNING *;';
-  const result = await pool.query(query, [Number(id)]);
-  return result.rows[0] || null;
+  const idNum = Number(id);
+  await pool.query('DELETE FROM Favorito WHERE id_produto = $1;', [idNum]);
+  await pool.query('DELETE FROM Item_Pedido WHERE id_produto = $1;', [idNum]);
+  const result = await pool.query('DELETE FROM Produto WHERE id_produto = $1 RETURNING *;', [idNum]);
+  return mapearProdutoDoBanco(result.rows[0]);
 }
 
 // ============================================================================
-// 2. CATEGORIAS DO CARDÁPIO (Tabela: Categoria)
+// 3. USUÁRIOS: TABELAS `Cliente` E `Funcionario` + `Favorito`
 // ============================================================================
 
-// Busca todas as categorias disponíveis
-async function listarCategorias(apenasAtivas = false) {
-  const query = apenasAtivas
-    ? 'SELECT * FROM Categoria WHERE ativo = TRUE ORDER BY ordem ASC, id ASC;'
-    : 'SELECT * FROM Categoria ORDER BY ordem ASC, id ASC;';
-  const result = await pool.query(query);
-  return result.rows;
-}
-
-// Busca uma categoria por ID ou por slug/nome
-async function buscarCategoriaPorId(identificador) {
-  const comoNumero = Number(identificador);
-  if (Number.isInteger(comoNumero) && comoNumero > 0 && String(comoNumero) === String(identificador).trim()) {
-    const resId = await pool.query('SELECT * FROM Categoria WHERE id = $1;', [comoNumero]);
-    if (resId.rows[0]) return resId.rows[0];
-  }
-
-  const texto = String(identificador || '').trim();
-  const resTexto = await pool.query(
-    'SELECT * FROM Categoria WHERE LOWER(COALESCE(slug, \'\')) = LOWER($1) OR LOWER(nome) = LOWER($1) LIMIT 1;',
-    [texto]
+async function obterIdsFavoritosDoCliente(idCliente) {
+  const res = await pool.query(
+    'SELECT id_produto FROM Favorito WHERE id_cliente = $1 ORDER BY id_favorito ASC;',
+    [Number(idCliente)]
   );
-  return resTexto.rows[0] || null;
+  return res.rows.map((r) => Number(r.id_produto));
 }
 
-// Cria uma nova categoria no banco
-async function criarCategoria(categoria) {
-  const slug =
-    categoria.slug ||
-    String(categoria.nome || '')
-      .normalize('NFD')
-      .replace(/[\u0300-\u036f]/g, '')
-      .toLowerCase()
-      .replace(/[^a-z0-9]+/g, '-')
-      .replace(/^-+|-+$/g, '');
-
-  const query = `
-    INSERT INTO Categoria (nome, slug, ordem, ativo)
-    VALUES ($1, $2, COALESCE($3, (SELECT COALESCE(MAX(ordem), 0) + 1 FROM Categoria)), $4)
-    RETURNING *;
-  `;
-  const values = [
-    categoria.nome,
-    slug,
-    categoria.ordem !== undefined ? Number(categoria.ordem) : null,
-    categoria.ativo !== false,
-  ];
-  const result = await pool.query(query, values);
-  return result.rows[0];
-}
-
-// Atualiza o nome, ordem ou status (ativo/inativo) de uma categoria existente
-async function atualizarCategoria(id, categoria) {
-  const query = `
-    UPDATE Categoria
-    SET
-      nome = COALESCE($1, nome),
-      slug = COALESCE($2, slug),
-      ordem = COALESCE($3, ordem),
-      ativo = COALESCE($4, ativo)
-    WHERE id = $5
-    RETURNING *;
-  `;
-  const values = [
-    categoria.nome !== undefined ? categoria.nome : null,
-    categoria.slug !== undefined ? categoria.slug : null,
-    categoria.ordem !== undefined ? Number(categoria.ordem) : null,
-    categoria.ativo !== undefined ? Boolean(categoria.ativo) : null,
-    Number(id),
-  ];
-  const result = await pool.query(query, values);
-  return result.rows[0] || null;
-}
-
-// Remove uma categoria do banco
-async function deletarCategoria(id) {
-  const query = 'DELETE FROM Categoria WHERE id = $1 RETURNING *;';
-  const result = await pool.query(query, [Number(id)]);
-  return result.rows[0] || null;
-}
-
-// ============================================================================
-// 3. USUÁRIOS: CLIENTES, FUNCIONÁRIOS E ADMIN (Tabela: Usuario)
-// ============================================================================
-
-async function buscarUsuarioPorId(id) {
-  const result = await pool.query('SELECT * FROM Usuario WHERE id = $1;', [Number(id)]);
-  return normalizarUsuario(result.rows[0]);
-}
-
-async function buscarUsuarioPorEmail(email) {
-  const result = await pool.query('SELECT * FROM Usuario WHERE LOWER(email) = LOWER($1) LIMIT 1;', [
-    String(email || '').trim(),
-  ]);
-  return normalizarUsuario(result.rows[0]);
-}
-
-async function buscarUsuarioPorTelefone(telefone) {
-  const digitos = String(telefone || '').replace(/\D/g, '');
-  const result = await pool.query(
-    `SELECT * FROM Usuario WHERE REGEXP_REPLACE(COALESCE(telefone, ''), '\\D', '', 'g') = $1 LIMIT 1;`,
-    [digitos]
-  );
-  return normalizarUsuario(result.rows[0]);
-}
-
-async function buscarUsuarioPorLogin(loginOuNome) {
-  const termo = String(loginOuNome || '').trim();
-  const result = await pool.query(
-    `SELECT * FROM Usuario
-     WHERE LOWER(COALESCE(login, '')) = LOWER($1)
-        OR LOWER(nome) = LOWER($1)
-     ORDER BY CASE WHEN tipo = 'admin' THEN 0 ELSE 1 END
-     LIMIT 1;`,
-    [termo]
-  );
-  return normalizarUsuario(result.rows[0]);
-}
-
-async function listarUsuarios(filtros = {}) {
-  const { tipo, ativo, cargo, busca } = filtros;
-  const condicoes = [];
-  const valores = [];
-
-  if (tipo) {
-    if (tipo === 'interno') {
-      condicoes.push(`tipo IN ('admin', 'funcionario')`);
-    } else {
-      valores.push(tipo);
-      condicoes.push(`tipo = $${valores.length}`);
-    }
-  }
-
-  if (ativo !== undefined && ativo !== null && ativo !== '') {
-    const boolAtivo = ativo === true || ativo === 'true' || ativo === '1' || ativo === 1;
-    valores.push(boolAtivo);
-    condicoes.push(`ativo = $${valores.length}`);
-  }
-
-  if (cargo) {
-    valores.push(`%${String(cargo).trim()}%`);
-    condicoes.push(`cargo ILIKE $${valores.length}`);
-  }
-
-  if (busca) {
-    valores.push(`%${String(busca).trim()}%`);
-    condicoes.push(
-      `(nome ILIKE $${valores.length} OR email ILIKE $${valores.length} OR COALESCE(telefone, '') ILIKE $${valores.length} OR COALESCE(cargo, '') ILIKE $${valores.length} OR COALESCE(login, '') ILIKE $${valores.length})`
-    );
-  }
-
-  const whereSql = condicoes.length > 0 ? `WHERE ${condicoes.join(' AND ')}` : '';
-  const result = await pool.query(`SELECT * FROM Usuario ${whereSql} ORDER BY id ASC;`, valores);
-  return result.rows.map(normalizarUsuario);
-}
-
-async function criarUsuario(dados) {
-  const query = `
-    INSERT INTO Usuario (login, nome, email, telefone, senha_hash, tipo, cargo, foto_webp, ativo, precisa_trocar_senha, favoritos)
-    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11::jsonb)
-    RETURNING *;
-  `;
-  const values = [
-    dados.login || null,
-    dados.nome,
-    dados.email,
-    dados.telefone || '',
-    dados.senha_hash,
-    dados.tipo || 'cliente',
-    dados.cargo || null,
-    dados.foto_webp || null,
-    dados.ativo !== undefined ? Boolean(dados.ativo) : true,
-    Boolean(dados.precisa_trocar_senha),
-    JSON.stringify(Array.isArray(dados.favoritos) ? dados.favoritos : []),
-  ];
-  const result = await pool.query(query, values);
-  return normalizarUsuario(result.rows[0]);
-}
-
-async function atualizarUsuario(id, campos) {
-  const alterarFoto = Object.prototype.hasOwnProperty.call(campos, 'foto_webp');
-  const alterarCargo = Object.prototype.hasOwnProperty.call(campos, 'cargo');
-  const alterarLogin = Object.prototype.hasOwnProperty.call(campos, 'login');
-  const alterarSenha = Boolean(campos.senha_hash);
-
-  const query = `
-    UPDATE Usuario
-    SET
-      login = CASE WHEN $1::boolean THEN $2 ELSE login END,
-      nome = COALESCE($3, nome),
-      email = COALESCE($4, email),
-      telefone = COALESCE($5, telefone),
-      senha_hash = COALESCE($6, senha_hash),
-      precisa_trocar_senha = CASE
-        WHEN $7::boolean THEN $8
-        WHEN $9::boolean THEN FALSE
-        ELSE precisa_trocar_senha
-      END,
-      tipo = COALESCE($10, tipo),
-      cargo = CASE WHEN $11::boolean THEN $12 ELSE cargo END,
-      foto_webp = CASE WHEN $13::boolean THEN $14 ELSE foto_webp END,
-      ativo = COALESCE($15, ativo),
-      favoritos = COALESCE($16::jsonb, favoritos),
-      ultimo_acesso = COALESCE($17::timestamp, ultimo_acesso)
-    WHERE id = $18
-    RETURNING *;
-  `;
-
-  const temFlagTrocaSenha = campos.precisa_trocar_senha !== undefined;
-  const values = [
-    alterarLogin,
-    alterarLogin ? campos.login : null,
-    campos.nome !== undefined ? campos.nome : null,
-    campos.email !== undefined ? campos.email : null,
-    campos.telefone !== undefined ? campos.telefone : null,
-    campos.senha_hash || null,
-    temFlagTrocaSenha,
-    temFlagTrocaSenha ? Boolean(campos.precisa_trocar_senha) : false,
-    alterarSenha,
-    campos.tipo !== undefined ? campos.tipo : null,
-    alterarCargo,
-    alterarCargo ? campos.cargo : null,
-    alterarFoto,
-    alterarFoto ? campos.foto_webp : null,
-    campos.ativo !== undefined ? Boolean(campos.ativo) : null,
-    campos.favoritos !== undefined ? JSON.stringify(campos.favoritos) : null,
-    campos.ultimo_acesso !== undefined ? campos.ultimo_acesso : null,
-    Number(id),
-  ];
-
-  const result = await pool.query(query, values);
-  return normalizarUsuario(result.rows[0]);
-}
-
-async function removerUsuario(id) {
-  const result = await pool.query('DELETE FROM Usuario WHERE id = $1 RETURNING id;', [Number(id)]);
-  return result.rowCount > 0;
-}
-
-// ============================================================================
-// 4. CARRINHO / SACOLA DO USUÁRIO (Tabela: Sacola_Item)
-// ============================================================================
-
-async function obterSacolaUsuario(usuarioId) {
-  const query = `
-    SELECT produto_id AS item_id, quantidade
-    FROM Sacola_Item
-    WHERE usuario_id = $1
-    ORDER BY id ASC;
-  `;
-  const result = await pool.query(query, [Number(usuarioId)]);
-  return result.rows.map((r) => ({
-    item_id: Number(r.item_id),
-    quantidade: Number(r.quantidade),
-  }));
-}
-
-async function salvarSacolaUsuario(usuarioId, itensSacola = []) {
-  const uId = Number(usuarioId);
+async function sincronizarFavoritosDoCliente(idCliente, listaIdsProdutos = []) {
+  const idCli = Number(idCliente);
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
-    await client.query('DELETE FROM Sacola_Item WHERE usuario_id = $1;', [uId]);
-
-    for (const item of itensSacola) {
+    await client.query('DELETE FROM Favorito WHERE id_cliente = $1;', [idCli]);
+    for (const idProd of listaIdsProdutos) {
       await client.query(
-        `INSERT INTO Sacola_Item (usuario_id, produto_id, quantidade)
-         VALUES ($1, $2, $3)
-         ON CONFLICT (usuario_id, produto_id)
-         DO UPDATE SET quantidade = EXCLUDED.quantidade;`,
-        [uId, Number(item.item_id), Number(item.quantidade)]
+        'INSERT INTO Favorito (id_cliente, id_produto) VALUES ($1, $2) ON CONFLICT DO NOTHING;',
+        [idCli, Number(idProd)]
       );
     }
-
     await client.query('COMMIT');
-    return itensSacola;
   } catch (erro) {
     await client.query('ROLLBACK');
     throw erro;
@@ -431,50 +241,463 @@ async function salvarSacolaUsuario(usuarioId, itensSacola = []) {
   }
 }
 
-// ============================================================================
-// 5. PEDIDOS (Tabela: Pedido)
-// ============================================================================
+async function buscarUsuarioPorId(id) {
+  const idNum = Number(id);
+  if (!Number.isFinite(idNum)) return null;
 
-async function obterProximoNumeroPedido() {
-  const result = await pool.query(
-    'SELECT COALESCE(MAX(COALESCE(numero, id)), 52680) + 1 AS proximo FROM Pedido;'
-  );
-  return Number(result.rows[0].proximo);
+  // Verifica primeiro em Cliente, depois em Funcionario
+  const resCli = await pool.query('SELECT * FROM Cliente WHERE id_cliente = $1;', [idNum]);
+  if (resCli.rows[0]) {
+    const favs = await obterIdsFavoritosDoCliente(resCli.rows[0].id_cliente);
+    return mapearClienteDoBanco(resCli.rows[0], favs);
+  }
+
+  const resFunc = await pool.query('SELECT * FROM Funcionario WHERE id_funcionario = $1;', [idNum]);
+  if (resFunc.rows[0]) {
+    return mapearFuncionarioDoBanco(resFunc.rows[0]);
+  }
+
+  return null;
 }
 
-async function criarPedido(dados) {
-  const proximoNumero = await obterProximoNumeroPedido();
+async function buscarUsuarioPorEmail(email) {
+  const termo = String(email || '').trim();
+  const resCli = await pool.query('SELECT * FROM Cliente WHERE LOWER(Email) = LOWER($1) LIMIT 1;', [
+    termo,
+  ]);
+  if (resCli.rows[0]) {
+    const favs = await obterIdsFavoritosDoCliente(resCli.rows[0].id_cliente);
+    return mapearClienteDoBanco(resCli.rows[0], favs);
+  }
+
+  const resFunc = await pool.query(
+    'SELECT * FROM Funcionario WHERE LOWER(COALESCE(Email, \'\')) = LOWER($1) LIMIT 1;',
+    [termo]
+  );
+  if (resFunc.rows[0]) {
+    return mapearFuncionarioDoBanco(resFunc.rows[0]);
+  }
+
+  return null;
+}
+
+async function buscarUsuarioPorTelefone(telefone) {
+  const digitos = String(telefone || '').replace(/\D/g, '');
+  const resCli = await pool.query(
+    `SELECT * FROM Cliente WHERE REGEXP_REPLACE(COALESCE(Telefone, ''), '\\D', '', 'g') = $1 LIMIT 1;`,
+    [digitos]
+  );
+  if (resCli.rows[0]) {
+    const favs = await obterIdsFavoritosDoCliente(resCli.rows[0].id_cliente);
+    return mapearClienteDoBanco(resCli.rows[0], favs);
+  }
+
+  const resFunc = await pool.query(
+    `SELECT * FROM Funcionario WHERE REGEXP_REPLACE(COALESCE(Telefone, ''), '\\D', '', 'g') = $1 LIMIT 1;`,
+    [digitos]
+  );
+  if (resFunc.rows[0]) {
+    return mapearFuncionarioDoBanco(resFunc.rows[0]);
+  }
+
+  return null;
+}
+
+async function buscarUsuarioPorLogin(loginOuNomeOuCpf) {
+  const termo = String(loginOuNomeOuCpf || '').trim();
+  const digitos = termo.replace(/\D/g, '');
+
+  const resFunc = await pool.query(
+    `SELECT * FROM Funcionario
+     WHERE LOWER(Nome) = LOWER($1)
+        OR LOWER(COALESCE(Email, '')) = LOWER($1)
+        OR CPF = $1
+        OR ($2 <> '' AND REGEXP_REPLACE(CPF, '\\D', '', 'g') = $2)
+     ORDER BY id_funcionario ASC
+     LIMIT 1;`,
+    [termo, digitos]
+  );
+  if (resFunc.rows[0]) {
+    return mapearFuncionarioDoBanco(resFunc.rows[0]);
+  }
+
+  const resCli = await pool.query(
+    `SELECT * FROM Cliente
+     WHERE LOWER(Nome) = LOWER($1)
+        OR LOWER(Email) = LOWER($1)
+        OR CPF = $1
+        OR ($2 <> '' AND REGEXP_REPLACE(CPF, '\\D', '', 'g') = $2)
+     ORDER BY id_cliente ASC
+     LIMIT 1;`,
+    [termo, digitos]
+  );
+  if (resCli.rows[0]) {
+    const favs = await obterIdsFavoritosDoCliente(resCli.rows[0].id_cliente);
+    return mapearClienteDoBanco(resCli.rows[0], favs);
+  }
+
+  return null;
+}
+
+async function listarUsuarios(filtros = {}) {
+  const { tipo, ativo, cargo, busca } = filtros;
+  const resultado = [];
+
+  const incluirInternos = !tipo || tipo === 'interno' || tipo === 'funcionario' || tipo === 'admin';
+  const incluirClientes = !tipo || tipo === 'cliente';
+
+  if (incluirInternos) {
+    const resFunc = await pool.query('SELECT * FROM Funcionario ORDER BY id_funcionario ASC;');
+    for (const row of resFunc.rows) {
+      resultado.push(mapearFuncionarioDoBanco(row));
+    }
+  }
+
+  if (incluirClientes) {
+    const resCli = await pool.query('SELECT * FROM Cliente ORDER BY id_cliente ASC;');
+    for (const row of resCli.rows) {
+      const favs = await obterIdsFavoritosDoCliente(row.id_cliente);
+      resultado.push(mapearClienteDoBanco(row, favs));
+    }
+  }
+
+  return resultado.filter((u) => {
+    if (tipo && tipo !== 'interno' && u.tipo !== tipo) return false;
+    if (ativo !== undefined && ativo !== null && ativo !== '') {
+      const boolAtivo = ativo === true || ativo === 'true' || ativo === '1' || ativo === 1;
+      if (Boolean(u.ativo) !== boolAtivo) return false;
+    }
+    if (cargo && (!u.cargo || !u.cargo.toLowerCase().includes(String(cargo).toLowerCase()))) {
+      return false;
+    }
+    if (busca) {
+      const t = String(busca).toLowerCase();
+      const bate =
+        (u.nome && u.nome.toLowerCase().includes(t)) ||
+        (u.email && u.email.toLowerCase().includes(t)) ||
+        (u.telefone && u.telefone.includes(t)) ||
+        (u.cpf && u.cpf.includes(t)) ||
+        (u.cargo && u.cargo.toLowerCase().includes(t));
+      if (!bate) return false;
+    }
+    return true;
+  });
+}
+
+async function criarUsuario(dados) {
+  const tipo = dados.tipo || 'cliente';
+  const cpf = normalizarOuGerarCpf(dados.cpf, dados.telefone || dados.email || dados.nome);
+
+  if (tipo === 'funcionario' || tipo === 'admin') {
+    const cargoPadrao = tipo === 'admin' ? 'Administrador' : 'Atendimento';
+    const query = `
+      INSERT INTO Funcionario (Nome, CPF, Cargo, Ativo, Senha_acesso, Email, Telefone, Foto_url, Precisa_trocar_senha)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+      RETURNING *;
+    `;
+    const values = [
+      dados.nome,
+      cpf,
+      dados.cargo || cargoPadrao,
+      dados.ativo !== false,
+      dados.senha_hash,
+      dados.email || null,
+      dados.telefone || null,
+      dados.foto_webp || null,
+      Boolean(dados.precisa_trocar_senha),
+    ];
+    const res = await pool.query(query, values);
+    return mapearFuncionarioDoBanco(res.rows[0]);
+  }
+
   const query = `
-    INSERT INTO Pedido (
-      numero, usuario_id, cliente_nome, cliente_foto,
-      itens, total, unidade_retirada, previsao_minutos, observacoes, status
-    )
-    VALUES ($1, $2, $3, $4, $5::jsonb, $6, $7, $8, $9, $10)
+    INSERT INTO Cliente (Nome, Telefone, CPF, Email, Data_nascimento, Senha_cliente, Foto_url, Ativo)
+    VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
     RETURNING *;
   `;
   const values = [
-    dados.numero || proximoNumero,
-    Number(dados.usuario_id),
-    dados.cliente_nome,
-    dados.cliente_foto || null,
-    JSON.stringify(Array.isArray(dados.itens) ? dados.itens : []),
-    Number(dados.total),
-    dados.unidade_retirada || 'Shopping Beira Mar',
-    Number(dados.previsao_minutos) || 5,
-    dados.observacoes || null,
-    dados.status || 'preparando',
+    dados.nome,
+    dados.telefone || null,
+    cpf,
+    dados.email,
+    dados.data_nascimento || null,
+    dados.senha_hash,
+    dados.foto_webp || null,
+    dados.ativo !== false,
   ];
-  const result = await pool.query(query, values);
-  return normalizarPedido(result.rows[0]);
+  const res = await pool.query(query, values);
+  return mapearClienteDoBanco(res.rows[0], []);
 }
 
-async function buscarPedidoPorId(idOuNumero) {
-  const num = Number(idOuNumero);
-  const result = await pool.query(
-    'SELECT * FROM Pedido WHERE id = $1 OR numero = $1 LIMIT 1;',
-    [num]
+async function atualizarUsuario(id, campos) {
+  const idNum = Number(id);
+  const alterarFoto = Object.prototype.hasOwnProperty.call(campos, 'foto_webp');
+
+  // Verifica se o ID pertence a Cliente
+  const checkCli = await pool.query('SELECT id_cliente FROM Cliente WHERE id_cliente = $1;', [idNum]);
+  if (checkCli.rowCount > 0) {
+    if (Array.isArray(campos.favoritos)) {
+      await sincronizarFavoritosDoCliente(idNum, campos.favoritos);
+    }
+
+    const query = `
+      UPDATE Cliente
+      SET
+        Nome = COALESCE($1, Nome),
+        Email = COALESCE($2, Email),
+        Telefone = COALESCE($3, Telefone),
+        CPF = COALESCE($4, CPF),
+        Senha_cliente = COALESCE($5, Senha_cliente),
+        Foto_url = CASE WHEN $6::boolean THEN $7 ELSE Foto_url END,
+        Ativo = COALESCE($8, Ativo),
+        Ultimo_acesso = COALESCE($9::timestamp, Ultimo_acesso)
+      WHERE id_cliente = $10
+      RETURNING *;
+    `;
+    const values = [
+      campos.nome !== undefined ? campos.nome : null,
+      campos.email !== undefined ? campos.email : null,
+      campos.telefone !== undefined ? campos.telefone : null,
+      campos.cpf ? normalizarOuGerarCpf(campos.cpf) : null,
+      campos.senha_hash || null,
+      alterarFoto,
+      alterarFoto ? campos.foto_webp : null,
+      campos.ativo !== undefined ? Boolean(campos.ativo) : null,
+      campos.ultimo_acesso !== undefined ? campos.ultimo_acesso : null,
+      idNum,
+    ];
+    const res = await pool.query(query, values);
+    const favs = await obterIdsFavoritosDoCliente(idNum);
+    return mapearClienteDoBanco(res.rows[0], favs);
+  }
+
+  // Caso contrário, atualiza em Funcionario
+  const checkFunc = await pool.query(
+    'SELECT id_funcionario FROM Funcionario WHERE id_funcionario = $1;',
+    [idNum]
   );
-  return normalizarPedido(result.rows[0]);
+  if (checkFunc.rowCount > 0) {
+    const alterarCargo = Object.prototype.hasOwnProperty.call(campos, 'cargo');
+    const alterarSenha = Boolean(campos.senha_hash);
+    const temFlagTroca = campos.precisa_trocar_senha !== undefined;
+
+    const query = `
+      UPDATE Funcionario
+      SET
+        Nome = COALESCE($1, Nome),
+        Email = COALESCE($2, Email),
+        Telefone = COALESCE($3, Telefone),
+        CPF = COALESCE($4, CPF),
+        Cargo = CASE WHEN $5::boolean THEN $6 ELSE Cargo END,
+        Senha_acesso = COALESCE($7, Senha_acesso),
+        Precisa_trocar_senha = CASE
+          WHEN $8::boolean THEN $9
+          WHEN $10::boolean THEN FALSE
+          ELSE Precisa_trocar_senha
+        END,
+        Foto_url = CASE WHEN $11::boolean THEN $12 ELSE Foto_url END,
+        Ativo = COALESCE($13, Ativo),
+        Ultimo_acesso = COALESCE($14::timestamp, Ultimo_acesso)
+      WHERE id_funcionario = $15
+      RETURNING *;
+    `;
+    const values = [
+      campos.nome !== undefined ? campos.nome : null,
+      campos.email !== undefined ? campos.email : null,
+      campos.telefone !== undefined ? campos.telefone : null,
+      campos.cpf ? normalizarOuGerarCpf(campos.cpf) : null,
+      alterarCargo,
+      alterarCargo ? campos.cargo : null,
+      campos.senha_hash || null,
+      temFlagTroca,
+      temFlagTroca ? Boolean(campos.precisa_trocar_senha) : false,
+      alterarSenha,
+      alterarFoto,
+      alterarFoto ? campos.foto_webp : null,
+      campos.ativo !== undefined ? Boolean(campos.ativo) : null,
+      campos.ultimo_acesso !== undefined ? campos.ultimo_acesso : null,
+      idNum,
+    ];
+    const res = await pool.query(query, values);
+    return mapearFuncionarioDoBanco(res.rows[0]);
+  }
+
+  return null;
+}
+
+async function removerUsuario(id) {
+  const idNum = Number(id);
+  await pool.query('DELETE FROM Favorito WHERE id_cliente = $1;', [idNum]);
+  const resCli = await pool.query('DELETE FROM Cliente WHERE id_cliente = $1 RETURNING id_cliente;', [
+    idNum,
+  ]);
+  if (resCli.rowCount > 0) return true;
+
+  const resFunc = await pool.query(
+    'DELETE FROM Funcionario WHERE id_funcionario = $1 RETURNING id_funcionario;',
+    [idNum]
+  );
+  return resFunc.rowCount > 0;
+}
+
+// ============================================================================
+// 4. SACOLA E PEDIDOS (Tabelas: Pedido, Item_Pedido, Pagamento)
+// ============================================================================
+
+async function obterSacolaUsuario(usuarioId) {
+  return sacolasTemporarias.get(String(usuarioId)) || [];
+}
+
+async function salvarSacolaUsuario(usuarioId, itensSacola = []) {
+  sacolasTemporarias.set(String(usuarioId), itensSacola);
+  return itensSacola;
+}
+
+async function obterProximoNumeroPedido() {
+  const result = await pool.query('SELECT COALESCE(MAX(id_pedido), 52680) + 1 AS proximo FROM Pedido;');
+  return Number(result.rows[0].proximo);
+}
+
+/**
+ * Garante um `id_cliente` válido na tabela `Cliente` e um `id_funcionario` válido na tabela `Funcionario`
+ * para cumprir as chaves estrangeiras obrigatórias da tabela `Pedido`.
+ */
+async function obterIdsRelacionaisParaPedido(usuarioId) {
+  const idNum = Number(usuarioId);
+  let idCliente = null;
+
+  const checkCli = await pool.query('SELECT id_cliente FROM Cliente WHERE id_cliente = $1;', [idNum]);
+  if (checkCli.rowCount > 0) {
+    idCliente = checkCli.rows[0].id_cliente;
+  } else {
+    // Se um Funcionário/Admin estiver testando o envio de pedido como cliente, garante registro espelho em Cliente
+    const func = await pool.query('SELECT * FROM Funcionario WHERE id_funcionario = $1;', [idNum]);
+    if (func.rows[0]) {
+      const f = func.rows[0];
+      const emailEspelho = f.email || `${f.nome.toLowerCase().replace(/\s+/g, '.')}@cafeteriajoao.com`;
+      const cliEspelho = await pool.query(
+        'SELECT id_cliente FROM Cliente WHERE LOWER(Email) = LOWER($1) LIMIT 1;',
+        [emailEspelho]
+      );
+      if (cliEspelho.rows[0]) {
+        idCliente = cliEspelho.rows[0].id_cliente;
+      } else {
+        const novoCli = await pool.query(
+          `INSERT INTO Cliente (Nome, Telefone, CPF, Email, Senha_cliente, Foto_url, Ativo)
+           VALUES ($1, $2, $3, $4, $5, $6, TRUE) RETURNING id_cliente;`,
+          [
+            f.nome,
+            f.telefone || '48999990000',
+            normalizarOuGerarCpf(null, f.cpf),
+            emailEspelho,
+            f.senha_acesso,
+            f.foto_url,
+          ]
+        );
+        idCliente = novoCli.rows[0].id_cliente;
+      }
+    }
+  }
+
+  const funcPadrao = await pool.query(
+    'SELECT id_funcionario FROM Funcionario WHERE Ativo = TRUE ORDER BY id_funcionario ASC LIMIT 1;'
+  );
+  const idFuncionario = funcPadrao.rows[0]?.id_funcionario || 1;
+
+  return { idCliente, idFuncionario };
+}
+
+async function buscarPedidoPorId(idPedido) {
+  const idNum = Number(idPedido);
+  const resPed = await pool.query(
+    `SELECT p.*,
+            c.Nome AS cliente_nome,
+            c.Foto_url AS cliente_foto,
+            f.Nome AS funcionario_nome
+     FROM Pedido p
+     INNER JOIN Cliente c ON c.id_cliente = p.id_cliente
+     LEFT JOIN Funcionario f ON f.id_funcionario = p.id_funcionario
+     WHERE p.id_pedido = $1;`,
+    [idNum]
+  );
+
+  if (!resPed.rows[0]) return null;
+
+  const resItens = await pool.query(
+    `SELECT ip.*,
+            pr.Nome AS produto_nome,
+            pr.Descricao AS produto_descricao,
+            pr.Imagem_url AS produto_imagem
+     FROM Item_Pedido ip
+     INNER JOIN Produto pr ON pr.id_produto = ip.id_produto
+     WHERE ip.id_pedido = $1
+     ORDER BY ip.id_item ASC;`,
+    [idNum]
+  );
+
+  const resPag = await pool.query(
+    'SELECT * FROM Pagamento WHERE id_pedido = $1 ORDER BY id_pagamento DESC LIMIT 1;',
+    [idNum]
+  );
+
+  return mapearPedidoDoBanco(resPed.rows[0], resItens.rows, resPag.rows[0]);
+}
+
+async function criarPedido(dados) {
+  const { idCliente, idFuncionario } = await obterIdsRelacionaisParaPedido(dados.usuario_id);
+  const client = await pool.connect();
+
+  try {
+    await client.query('BEGIN');
+
+    const resPed = await client.query(
+      `INSERT INTO Pedido (
+         id_cliente, id_funcionario, Status_pedido, Valor_total,
+         Unidade_retirada, Previsao_minutos, Observacoes
+       )
+       VALUES ($1, $2, $3, $4, $5, $6, $7)
+       RETURNING id_pedido;`,
+      [
+        idCliente,
+        idFuncionario,
+        dados.status || 'preparando',
+        Number(dados.total),
+        dados.unidade_retirada || 'Shopping Beira Mar',
+        Number(dados.previsao_minutos) || 5,
+        dados.observacoes || null,
+      ]
+    );
+
+    const novoIdPedido = resPed.rows[0].id_pedido;
+
+    for (const item of dados.itens || []) {
+      await client.query(
+        `INSERT INTO Item_Pedido (id_pedido, id_produto, Quantidade, Preco_unitario, Observacoes)
+         VALUES ($1, $2, $3, $4, $5);`,
+        [
+          novoIdPedido,
+          Number(item.item_id ?? item.id_produto),
+          Number(item.quantidade),
+          Number(item.preco_unitario),
+          item.observacoes || dados.observacoes || null,
+        ]
+      );
+    }
+
+    await client.query(
+      `INSERT INTO Pagamento (id_pedido, Metodo_pagamento, Status_pagamento, Valor)
+       VALUES ($1, 'Retirada no Balcão', 'Aguardando Retirada', $2);`,
+      [novoIdPedido, Number(dados.total)]
+    );
+
+    await client.query('COMMIT');
+    return buscarPedidoPorId(novoIdPedido);
+  } catch (erro) {
+    await client.query('ROLLBACK');
+    throw erro;
+  } finally {
+    client.release();
+  }
 }
 
 async function listarPedidos(filtros = {}) {
@@ -484,82 +707,141 @@ async function listarPedidos(filtros = {}) {
 
   if (usuarioId !== undefined && usuarioId !== null) {
     valores.push(Number(usuarioId));
-    condicoes.push(`usuario_id = $${valores.length}`);
+    condicoes.push(`p.id_cliente = $${valores.length}`);
   }
 
   if (status) {
     if (Array.isArray(status)) {
       valores.push(status);
-      condicoes.push(`status = ANY($${valores.length})`);
+      condicoes.push(`LOWER(p.Status_pedido) = ANY($${valores.length})`);
     } else {
-      valores.push(status);
-      condicoes.push(`status = $${valores.length}`);
+      valores.push(String(status).toLowerCase());
+      condicoes.push(`LOWER(p.Status_pedido) = $${valores.length}`);
     }
   }
 
   if (apenasEmAndamento) {
-    condicoes.push(`status IN ('pendente', 'preparando')`);
+    condicoes.push(`LOWER(p.Status_pedido) IN ('pendente', 'preparando')`);
   }
 
   if (apenasHistorico) {
-    condicoes.push(`status IN ('concluido', 'cancelado')`);
+    condicoes.push(`LOWER(p.Status_pedido) IN ('concluido', 'cancelado', 'finalizado', 'retirado')`);
   }
 
   const whereSql = condicoes.length > 0 ? `WHERE ${condicoes.join(' AND ')}` : '';
-  const result = await pool.query(
-    `SELECT * FROM Pedido ${whereSql} ORDER BY COALESCE(numero, id) DESC;`,
+  const resPedidos = await pool.query(
+    `SELECT p.id_pedido
+     FROM Pedido p
+     ${whereSql}
+     ORDER BY p.id_pedido DESC;`,
     valores
   );
-  return result.rows.map(normalizarPedido);
+
+  const listaCompleta = [];
+  for (const row of resPedidos.rows) {
+    const ped = await buscarPedidoPorId(row.id_pedido);
+    if (ped) listaCompleta.push(ped);
+  }
+  return listaCompleta;
 }
 
-async function atualizarPedido(idOuNumero, campos) {
+async function atualizarPedido(idPedido, campos) {
+  const idNum = Number(idPedido);
   const alterarFinalizadoEm = Object.prototype.hasOwnProperty.call(campos, 'finalizado_em');
-  const alterarObservacoes = Object.prototype.hasOwnProperty.call(campos, 'observacoes');
+  const alterarObs = Object.prototype.hasOwnProperty.call(campos, 'observacoes');
 
-  const query = `
-    UPDATE Pedido
-    SET
-      cliente_nome = COALESCE($1, cliente_nome),
-      itens = COALESCE($2::jsonb, itens),
-      total = COALESCE($3, total),
-      unidade_retirada = COALESCE($4, unidade_retirada),
-      previsao_minutos = COALESCE($5, previsao_minutos),
-      observacoes = CASE WHEN $6::boolean THEN $7 ELSE observacoes END,
-      status = COALESCE($8, status),
-      finalizado_em = CASE WHEN $9::boolean THEN $10::timestamp ELSE finalizado_em END
-    WHERE id = $11 OR numero = $11
-    RETURNING *;
-  `;
-  const values = [
-    campos.cliente_nome !== undefined ? campos.cliente_nome : null,
-    campos.itens !== undefined ? JSON.stringify(campos.itens) : null,
-    campos.total !== undefined ? Number(campos.total) : null,
-    campos.unidade_retirada !== undefined ? campos.unidade_retirada : null,
-    campos.previsao_minutos !== undefined ? Number(campos.previsao_minutos) : null,
-    alterarObservacoes,
-    alterarObservacoes ? campos.observacoes : null,
-    campos.status !== undefined ? campos.status : null,
-    alterarFinalizadoEm,
-    alterarFinalizadoEm ? campos.finalizado_em : null,
-    Number(idOuNumero),
-  ];
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
 
-  const result = await pool.query(query, values);
-  return normalizarPedido(result.rows[0]);
+    if (Array.isArray(campos.itens) && campos.itens.length > 0) {
+      await client.query('DELETE FROM Item_Pedido WHERE id_pedido = $1;', [idNum]);
+      for (const item of campos.itens) {
+        await client.query(
+          `INSERT INTO Item_Pedido (id_pedido, id_produto, Quantidade, Preco_unitario, Observacoes)
+           VALUES ($1, $2, $3, $4, $5);`,
+          [
+            idNum,
+            Number(item.item_id ?? item.id_produto),
+            Number(item.quantidade),
+            Number(item.preco_unitario),
+            item.observacoes || null,
+          ]
+        );
+      }
+    }
+
+    await client.query(
+      `UPDATE Pedido
+       SET
+         Valor_total = COALESCE($1, Valor_total),
+         Unidade_retirada = COALESCE($2, Unidade_retirada),
+         Previsao_minutos = COALESCE($3, Previsao_minutos),
+         Observacoes = CASE WHEN $4::boolean THEN $5 ELSE Observacoes END,
+         Status_pedido = COALESCE($6, Status_pedido),
+         Data_finalizacao = CASE WHEN $7::boolean THEN $8::timestamp ELSE Data_finalizacao END
+       WHERE id_pedido = $9;`,
+      [
+        campos.total !== undefined ? Number(campos.total) : null,
+        campos.unidade_retirada !== undefined ? campos.unidade_retirada : null,
+        campos.previsao_minutos !== undefined ? Number(campos.previsao_minutos) : null,
+        alterarObs,
+        alterarObs ? campos.observacoes : null,
+        campos.status !== undefined ? campos.status : null,
+        alterarFinalizadoEm,
+        alterarFinalizadoEm ? campos.finalizado_em : null,
+        idNum,
+      ]
+    );
+
+    if (campos.status || campos.total !== undefined) {
+      const novoStatusPag =
+        campos.status === 'concluido'
+          ? 'Concluído'
+          : campos.status === 'cancelado'
+            ? 'Cancelado'
+            : 'Aguardando Retirada';
+      await client.query(
+        `UPDATE Pagamento
+         SET Status_pagamento = COALESCE($1, Status_pagamento),
+             Valor = COALESCE($2, Valor)
+         WHERE id_pedido = $3;`,
+        [campos.status ? novoStatusPag : null, campos.total !== undefined ? Number(campos.total) : null, idNum]
+      );
+    }
+
+    await client.query('COMMIT');
+    return buscarPedidoPorId(idNum);
+  } catch (erro) {
+    await client.query('ROLLBACK');
+    throw erro;
+  } finally {
+    client.release();
+  }
 }
 
-async function removerPedido(idOuNumero) {
-  const result = await pool.query(
-    'DELETE FROM Pedido WHERE id = $1 OR numero = $1 RETURNING id;',
-    [Number(idOuNumero)]
-  );
-  return result.rowCount > 0;
+async function removerPedido(idPedido) {
+  const idNum = Number(idPedido);
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    await client.query('DELETE FROM Pagamento WHERE id_pedido = $1;', [idNum]);
+    await client.query('DELETE FROM Item_Pedido WHERE id_pedido = $1;', [idNum]);
+    const res = await client.query('DELETE FROM Pedido WHERE id_pedido = $1 RETURNING id_pedido;', [
+      idNum,
+    ]);
+    await client.query('COMMIT');
+    return res.rowCount > 0;
+  } catch (erro) {
+    await client.query('ROLLBACK');
+    throw erro;
+  } finally {
+    client.release();
+  }
 }
 
-// Exporta todas as funções (mantendo os nomes originais do colega e os aliases do Core)
 module.exports = {
-  // Produtos (nomes do colega + aliases)
+  // Produtos
   listarItensCardapio,
   buscarItemCardapioPorId,
   criarProduto,
@@ -569,7 +851,7 @@ module.exports = {
   deletarProduto,
   removerItemCardapio: deletarProduto,
 
-  // Categorias (nomes do colega + aliases)
+  // Categorias
   listarCategorias,
   buscarCategoriaPorId,
   criarCategoria,
@@ -577,7 +859,7 @@ module.exports = {
   deletarCategoria,
   removerCategoria: deletarCategoria,
 
-  // Usuários
+  // Usuários (Cliente + Funcionario + Favorito)
   buscarUsuarioPorId,
   buscarUsuarioPorEmail,
   buscarUsuarioPorTelefone,
@@ -587,7 +869,7 @@ module.exports = {
   atualizarUsuario,
   removerUsuario,
 
-  // Sacola e Pedidos
+  // Sacola e Pedidos (Pedido + Item_Pedido + Pagamento)
   obterSacolaUsuario,
   salvarSacolaUsuario,
   obterProximoNumeroPedido,

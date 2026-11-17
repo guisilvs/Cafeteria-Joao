@@ -1,7 +1,7 @@
 /**
  * @file admin.js
  * @description Eventos, renderização de DOM e integração com a API do Painel Administrador (admin.html).
- * Permite gerenciar Categorias, Produtos (.webp), Pedidos e Usuários no PostgreSQL via API.
+ * Opera sobre as 8 tabelas da modelagem relacional no PostgreSQL via API.
  */
 
 (function inicializarAppAdmin() {
@@ -9,7 +9,7 @@
     'data:image/svg+xml;utf8,' +
     encodeURIComponent(
       `<svg xmlns="http://www.w3.org/2000/svg" width="200" height="200" viewBox="0 0 200 200">
-        <rect width="200" height="200" rx="28" fill="#f3e9dc"/>
+        <rect width="200" height="200" rx="28" fill="#ffffff"/>
         <text x="50%" y="54%" dominant-baseline="middle" text-anchor="middle" font-size="64">☕</text>
       </svg>`
     );
@@ -25,6 +25,7 @@
     );
 
   const estado = {
+    bancoConectado: true,
     operador: null,
     visaoAtual: 'pedidos',
     categorias: [],
@@ -36,6 +37,14 @@
     usuarioEditandoId: null,
     pedidoEditandoId: null,
   };
+
+  function atualizarIndicadorBanco(conectado) {
+    estado.bancoConectado = Boolean(conectado);
+    const rodape = document.getElementById('rodapeStatusBancoAdmin');
+    if (rodape) {
+      rodape.style.display = estado.bancoConectado ? 'none' : 'block';
+    }
+  }
 
   function mostrarToast(mensagem, tipo = 'padrao') {
     const container = document.getElementById('toastContainer');
@@ -58,6 +67,9 @@
   // ==========================================================================
 
   async function verificarSessaoAdmin() {
+    const conectado = await window.CafeteriaApi.verificarStatusBanco();
+    atualizarIndicadorBanco(conectado);
+
     const token = window.CafeteriaApi.obterToken('admin');
     if (!token) {
       mostrarTelaLogin();
@@ -158,11 +170,7 @@
 
   function alternarSidebar() {
     const sb = document.getElementById('adminSidebar');
-    const icone = document.getElementById('iconeToggleSidebar');
     sb.classList.toggle('aberta');
-    icone.className = sb.classList.contains('aberta')
-      ? 'fa-solid fa-angles-left'
-      : 'fa-solid fa-angles-right';
   }
 
   async function atualizarResumoENotificacoes() {
@@ -186,6 +194,9 @@
   async function navegarPara(visao, parametro = null) {
     estado.visaoAtual = visao;
 
+    const conectado = await window.CafeteriaApi.verificarStatusBanco();
+    atualizarIndicadorBanco(conectado);
+
     const idsSecoes = [
       'visaoOpcoes',
       'visaoPedidos',
@@ -206,8 +217,9 @@
     const subtitulo = document.getElementById('adminSubtituloPrincipal');
 
     if (visao === 'opcoes') {
-      titulo.textContent = 'Cafeteria do João';
-      subtitulo.textContent = 'Resumo Operacional';
+      titulo.textContent = '';
+      subtitulo.textContent = '';
+      document.getElementById('adminSidebar').classList.add('aberta');
       document.getElementById('visaoOpcoes').style.display = 'block';
       await atualizarResumoENotificacoes();
     } else if (visao === 'pedidos') {
@@ -231,7 +243,7 @@
       document.getElementById('visaoEditorProduto').style.display = 'block';
     } else if (visao === 'usuarios') {
       titulo.textContent = 'Usuários';
-      subtitulo.textContent = 'Gerenciamento de Acessos';
+      subtitulo.textContent = '';
       document.getElementById('menuBtnUsuarios').classList.add('ativo');
       document.getElementById('visaoUsuarios').style.display = 'block';
       await carregarUsuariosAdmin();
@@ -245,6 +257,12 @@
   async function carregarPedidosAdmin() {
     const gradePendentes = document.getElementById('gradePedidosPendentes');
     const gradeConcluidos = document.getElementById('gradePedidosConcluidos');
+
+    if (!estado.bancoConectado) {
+      gradePendentes.innerHTML = `<div class="aviso-centro-sem-banco">Não conectado no banco de dados</div>`;
+      gradeConcluidos.innerHTML = '';
+      return;
+    }
 
     try {
       const res = await window.CafeteriaApi.listarPedidosAdmin();
@@ -275,7 +293,7 @@
                       title="Modificar pedido"
                       onclick="window.AppAdmin.abrirModalPedido(${p.id})"
                     >
-                      <i class="fa-solid fa-pen-to-square"></i>
+                      <i class="fa-solid fa-pen"></i>
                     </button>
                   </div>
 
@@ -336,7 +354,7 @@
                 <div>
                   <div class="card-pedido-admin-topo">
                     <div>
-                      <h4>${escaparHtml(p.codigo_formatado)} (${escaparHtml(p.status_label)})</h4>
+                      <h4>${escaparHtml(p.codigo_formatado)}</h4>
                       <p>${escaparHtml(infoData)}</p>
                     </div>
                     <button
@@ -345,7 +363,7 @@
                       title="Modificar / Excluir pedido"
                       onclick="window.AppAdmin.abrirModalPedido(${p.id})"
                     >
-                      <i class="fa-solid fa-pen-to-square"></i>
+                      <i class="fa-solid fa-pen"></i>
                     </button>
                   </div>
 
@@ -476,6 +494,11 @@
 
   async function carregarCategoriasAdmin() {
     const container = document.getElementById('listaCategoriasAdmin');
+    if (!estado.bancoConectado) {
+      container.innerHTML = `<div class="aviso-centro-sem-banco">Não conectado no banco de dados</div>`;
+      return;
+    }
+
     try {
       const res = await window.CafeteriaApi.listarCategoriasAdmin();
       estado.categorias = Array.isArray(res.categorias) ? res.categorias : [];
@@ -490,13 +513,12 @@
           (cat, idx) => `
           <div class="barra-item-admin">
             <div class="barra-esquerda" onclick="window.AppAdmin.navegarPara('itens_categoria', ${cat.id})">
-              <div class="botoes-ordem-categoria" onclick="event.stopPropagation()">
-                <button type="button" title="Subir posição" onclick="window.AppAdmin.moverCategoria(${idx}, -1)">▲</button>
-                <button type="button" title="Descer posição" onclick="window.AppAdmin.moverCategoria(${idx}, 1)">▼</button>
+              <div class="botoes-ordem-categoria" onclick="event.stopPropagation()" title="Reordenar posição">
+                <button type="button" onclick="window.AppAdmin.moverCategoria(${idx}, -1)">▲</button>
+                <button type="button" onclick="window.AppAdmin.moverCategoria(${idx}, 1)">▼</button>
               </div>
               <div>
                 <div class="barra-titulo-principal">${escaparHtml(cat.nome)}</div>
-                <div class="barra-subtitulo">Clique para ver e gerenciar os produtos desta categoria</div>
               </div>
             </div>
 
@@ -515,7 +537,7 @@
                 title="Editar nome da categoria"
                 onclick="window.AppAdmin.abrirModalCategoria(${cat.id})"
               >
-                <i class="fa-solid fa-pen-to-square"></i>
+                <i class="fa-solid fa-pen"></i>
               </button>
               <button
                 type="button"
@@ -604,6 +626,12 @@
   // ==========================================================================
 
   async function carregarItensDaCategoriaAdmin(categoriaId) {
+    const grade = document.getElementById('gradeItensCategoriaAdmin');
+    if (!estado.bancoConectado) {
+      grade.innerHTML = `<div class="aviso-centro-sem-banco">Não conectado no banco de dados</div>`;
+      return;
+    }
+
     try {
       const res = await window.CafeteriaApi.obterCategoriaComItensAdmin(categoriaId);
       estado.categoriaAtiva = res.categoria;
@@ -612,7 +640,6 @@
       document.getElementById('adminTituloPrincipal').textContent = 'Cardápio';
       document.getElementById('adminSubtituloPrincipal').textContent = estado.categoriaAtiva.nome;
 
-      const grade = document.getElementById('gradeItensCategoriaAdmin');
       if (estado.itensCategoriaAtiva.length === 0) {
         grade.innerHTML =
           '<p style="font-size: 16px; color: #555;">Nenhum produto cadastrado nesta categoria ainda.</p>';
@@ -634,7 +661,7 @@
                   title="Editar produto"
                   onclick="window.AppAdmin.abrirEditorProduto(${item.id})"
                 >
-                  <i class="fa-solid fa-pen-to-square"></i>
+                  <i class="fa-solid fa-pen"></i>
                 </button>
                 <button
                   type="button"
@@ -767,11 +794,11 @@
   }
 
   function atualizarPreviewProduto() {
-    const nome = document.getElementById('inputProdutoNome').value.trim() || 'Nome do produto';
+    const nome = document.getElementById('inputProdutoNome').value.trim() || 'Matcha';
     const desc =
       document.getElementById('inputProdutoDescricao').value.trim() ||
-      'Descrição do produto aparecerá aqui.';
-    const precoBruto = document.getElementById('inputProdutoPreco').value.trim() || '0,00';
+      'Matcha, leite e gelo. Super refrescante. Perfeito para o verão.';
+    const precoBruto = document.getElementById('inputProdutoPreco').value.trim() || '12,90';
     const selectCat = document.getElementById('inputProdutoCategoria');
     const catOption = selectCat.options[selectCat.selectedIndex];
 
@@ -834,10 +861,19 @@
   }
 
   // ==========================================================================
-  // 6. GERENCIAMENTO DE USUÁRIOS (INTERNOS E CLIENTES - Node 143:838)
+  // 6. GERENCIAMENTO DE USUÁRIOS (Tabelas Funcionario e Cliente - Node 143:838)
   // ==========================================================================
 
   async function carregarUsuariosAdmin() {
+    const contInternos = document.getElementById('listaUsuariosInternos');
+    const contClientes = document.getElementById('listaUsuariosClientes');
+
+    if (!estado.bancoConectado) {
+      contInternos.innerHTML = `<div class="aviso-centro-sem-banco">Não conectado no banco de dados</div>`;
+      contClientes.innerHTML = '';
+      return;
+    }
+
     const busca = document.getElementById('inputBuscaUsuarioAdmin')?.value.trim() || '';
     const ordenar = document.getElementById('selectOrdenarUsuarios')?.value || '';
 
@@ -845,9 +881,6 @@
       const res = await window.CafeteriaApi.listarUsuariosAdmin({ busca, ordenar });
       const internos = Array.isArray(res.internos) ? res.internos : [];
       const clientes = Array.isArray(res.clientes) ? res.clientes : [];
-
-      const contInternos = document.getElementById('listaUsuariosInternos');
-      const contClientes = document.getElementById('listaUsuariosClientes');
 
       contInternos.innerHTML =
         internos.length === 0
@@ -861,10 +894,8 @@
                     <div class="barra-esquerda" onclick="window.AppAdmin.abrirModalUsuario(null, ${u.id})">
                       <img src="${avatar}" alt="${escaparHtml(u.nome)}" style="width: 50px; height: 50px; border-radius: 50%; object-fit: cover;" />
                       <div>
-                        <div class="barra-titulo-principal">${escaparHtml(u.nome)} ${
-                  u.login ? `<span style="font-size:13px;font-weight:400;color:#666;">(${escaparHtml(u.login)})</span>` : ''
-                }</div>
-                        <div class="barra-subtitulo">${escaparHtml(u.cargo || 'Atendimento')} • ${escaparHtml(u.email)}</div>
+                        <div class="barra-titulo-principal">${escaparHtml(u.nome)}</div>
+                        <div class="barra-subtitulo">${escaparHtml(u.cargo || 'Atendimento')}</div>
                       </div>
                     </div>
                     <div class="barra-direita">
@@ -879,10 +910,10 @@
                       <button
                         type="button"
                         class="btn-acao-icone"
-                        title="Editar usuário"
+                        title="Editar funcionário"
                         onclick="window.AppAdmin.abrirModalUsuario(null, ${u.id})"
                       >
-                        <i class="fa-solid fa-pen-to-square"></i>
+                        <i class="fa-solid fa-pen"></i>
                       </button>
                     </div>
                   </div>
@@ -896,31 +927,23 @@
           : clientes
               .map((u) => {
                 const avatar = u.foto_webp || AVATAR_PADRAO;
-                const ativoClasse = u.ativo !== false ? 'badge-ativo-admin' : 'badge-ativo-admin inativo';
                 return `
                   <div class="barra-item-admin">
                     <div class="barra-esquerda" onclick="window.AppAdmin.abrirModalUsuario(null, ${u.id})">
                       <img src="${avatar}" alt="${escaparHtml(u.nome)}" style="width: 50px; height: 50px; border-radius: 50%; object-fit: cover;" />
                       <div>
                         <div class="barra-titulo-principal">${escaparHtml(u.nome)}</div>
-                        <div class="barra-subtitulo">${escaparHtml(u.ultimo_acesso_label)} • ${escaparHtml(u.email)}</div>
+                        <div class="barra-subtitulo">${escaparHtml(u.ultimo_acesso_label)}</div>
                       </div>
                     </div>
                     <div class="barra-direita">
-                      <button
-                        type="button"
-                        class="${ativoClasse}"
-                        onclick="window.AppAdmin.alternarStatusUsuario(${u.id})"
-                      >
-                        ${escaparHtml(u.status_label)}
-                      </button>
                       <button
                         type="button"
                         class="btn-acao-icone"
                         title="Editar cliente"
                         onclick="window.AppAdmin.abrirModalUsuario(null, ${u.id})"
                       >
-                        <i class="fa-solid fa-pen-to-square"></i>
+                        <i class="fa-solid fa-pen"></i>
                       </button>
                     </div>
                   </div>
@@ -954,7 +977,7 @@
 
         document.getElementById('tituloModalUsuario').textContent = `Editar Usuário: ${u.nome}`;
         document.getElementById('inputModalUsuarioNome').value = u.nome || '';
-        document.getElementById('inputModalUsuarioLogin').value = u.login || '';
+        document.getElementById('inputModalUsuarioCpf').value = u.cpf || '';
         document.getElementById('inputModalUsuarioEmail').value = u.email || '';
         document.getElementById('inputModalUsuarioTelefone').value = u.telefone || '';
         document.getElementById('inputModalUsuarioTipo').value = u.tipo || 'cliente';
@@ -967,9 +990,9 @@
       }
     } else {
       document.getElementById('tituloModalUsuario').textContent =
-        tipoPadrao === 'cliente' ? 'Criar Novo Cliente' : 'Criar Novo Funcionário / Interno';
+        tipoPadrao === 'cliente' ? 'Criar Novo Cliente' : 'Criar Novo Funcionário (Interno)';
       document.getElementById('inputModalUsuarioNome').value = '';
-      document.getElementById('inputModalUsuarioLogin').value = '';
+      document.getElementById('inputModalUsuarioCpf').value = '';
       document.getElementById('inputModalUsuarioEmail').value = '';
       document.getElementById('inputModalUsuarioTelefone').value = '';
       document.getElementById('inputModalUsuarioTipo').value = tipoPadrao || 'cliente';
@@ -986,7 +1009,7 @@
     evento.preventDefault();
     const dados = {
       nome: document.getElementById('inputModalUsuarioNome').value.trim(),
-      login: document.getElementById('inputModalUsuarioLogin').value.trim() || null,
+      cpf: document.getElementById('inputModalUsuarioCpf').value.trim() || undefined,
       email: document.getElementById('inputModalUsuarioEmail').value.trim(),
       telefone: document.getElementById('inputModalUsuarioTelefone').value.trim(),
       tipo: document.getElementById('inputModalUsuarioTipo').value,
@@ -1009,7 +1032,7 @@
       } else {
         if (!dados.senha) dados.senha = '123456';
         await window.CafeteriaApi.criarUsuarioAdmin(dados);
-        mostrarToast('Novo usuário criado no PostgreSQL!', 'sucesso');
+        mostrarToast('Novo usuário salvo no PostgreSQL!', 'sucesso');
       }
       fecharModais();
       await carregarUsuariosAdmin();

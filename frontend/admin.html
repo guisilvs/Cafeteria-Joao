@@ -10,13 +10,20 @@
 <body class="admin-body">
   <div id="toastContainer" class="toast-container"></div>
 
+  <!-- Marca d'água de grão de café do Figma (fundo detalhe - Nodes 143:145 e 143:146) -->
+  <svg class="marca-dagua-grao-svg" viewBox="0 0 24 24" fill="#000000" aria-hidden="true">
+    <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm3.61 6.34c1.07 1.75.78 4.49-1.08 6.89-1.86 2.4-4.54 3.43-6.48 2.66.44-.16 1.51-.66 2.62-1.87 1.24-1.35 1.66-2.96 2.18-4.53.52-1.58 1.4-2.61 2.76-3.15zm-7.22 9.32c-1.07-1.75-.78-4.49 1.08-6.89 1.86-2.4 4.54-3.43 6.48-2.66-.44.16-1.51.66-2.62 1.87-1.24 1.35-1.66 2.96-2.18 4.53-.52 1.58-1.4 2.61-2.76 3.15z"/>
+  </svg>
+
   <!-- ========================================================================
        1. TELA DE LOGIN DO ADMINISTRADOR (Node 143:145 do Figma)
        ======================================================================== -->
   <section id="telaAdminLogin" class="admin-login-screen">
     <div class="admin-login-box">
       <div class="admin-logo-bloco">
-        <i class="fa-solid fa-mug-hot"></i>
+        <svg width="96" height="96" viewBox="0 0 24 24" fill="#1a1a1a" style="margin-bottom: 10px;">
+          <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm3.61 6.34c1.07 1.75.78 4.49-1.08 6.89-1.86 2.4-4.54 3.43-6.48 2.66.44-.16 1.51-.66 2.62-1.87 1.24-1.35 1.66-2.96 2.18-4.53.52-1.58 1.4-2.61 2.76-3.15zm-7.22 9.32c-1.07-1.75-.78-4.49 1.08-6.89 1.86-2.4 4.54-3.43 6.48-2.66-.44.16-1.51.66-2.62 1.87-1.24 1.35-1.66 2.96-2.18 4.53-.52 1.58-1.4 2.61-2.76 3.15z"/>
+        </svg>
         <h1>Cafeteria do João</h1>
       </div>
 
@@ -26,7 +33,7 @@
             id="inputAdminIdentificador"
             type="text"
             class="admin-input-grande"
-            placeholder="Login (ex: Admin), E-mail ou telefone"
+            placeholder="E-mail ou telefone (ou Admin)"
             required
           />
           <input
@@ -49,8 +56,6 @@
         </div>
       </form>
     </div>
-
-    <i class="fa-solid fa-seedling admin-marca-dagua" aria-hidden="true"></i>
   </section>
 
   <!-- ========================================================================
@@ -60,13 +65,16 @@
     <!-- Barra Lateral Expansível (#472e00) -->
     <aside id="adminSidebar" class="admin-sidebar">
       <div class="sidebar-topo" onclick="window.AppAdmin.navegarPara('opcoes')" title="Início do Painel">
-        <i class="fa-solid fa-mug-hot"></i>
+        <svg width="76" height="76" viewBox="0 0 24 24" fill="#ffffff" style="flex-shrink: 0;">
+          <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm3.61 6.34c1.07 1.75.78 4.49-1.08 6.89-1.86 2.4-4.54 3.43-6.48 2.66.44-.16 1.51-.66 2.62-1.87 1.24-1.35 1.66-2.96 2.18-4.53.52-1.58 1.4-2.61 2.76-3.15zm-7.22 9.32c-1.07-1.75-.78-4.49 1.08-6.89 1.86-2.4 4.54-3.43 6.48-2.66-.44.16-1.51.66-2.62 1.87-1.24 1.35-1.66 2.96-2.18 4.53-.52 1.58-1.4 2.61-2.76 3.15z"/>
+        </svg>
         <span class="sidebar-titulo-loja">Cafeteria do João</span>
       </div>
 
       <nav class="sidebar-menu" aria-label="Menu do Administrador">
         <button
           id="menuBtnPedidos"
+          type="button"
           class="sidebar-item"
           onclick="window.AppAdmin.navegarPara('pedidos')"
           title="Pedidos"
@@ -78,6 +86,7 @@
 
         <button
           id="menuBtnCardapio"
+          type="button"
           class="sidebar-item"
           onclick="window.AppAdmin.navegarPara('categorias')"
           title="Cardápio"
@@ -88,6 +97,7 @@
 
         <button
           id="menuBtnUsuarios"
+          type="button"
           class="sidebar-item"
           onclick="window.AppAdmin.navegarPara('usuarios')"
           title="Usuários"
@@ -104,7 +114,7 @@
           title="Expandir / Recolher Barra Lateral"
           onclick="window.AppAdmin.alternarSidebar()"
         >
-          <i id="iconeToggleSidebar" class="fa-solid fa-angles-right"></i>
+          <i id="iconeToggleSidebar" class="fa-solid fa-table-columns"></i>
         </button>
       </div>
     </aside>
@@ -180,7 +190,7 @@
 
           <div class="card-pedido-admin" style="width: 100%; min-height: 150px; cursor: pointer;" onclick="window.AppAdmin.navegarPara('usuarios')">
             <div>
-              <span style="font-size: 14px; color: #555;">Usuários Cadastrados</span>
+              <span style="font-size: 14px; color: #555;">Usuários (Internos e Clientes)</span>
               <h3 id="resumoUsuariosTotal" style="font-size: 38px; font-weight: 800; margin-top: 6px;">0</h3>
             </div>
             <span style="font-size: 13px; font-weight: 700; color: var(--coffee-primary);">Gerenciar usuários →</span>
@@ -248,9 +258,19 @@
       <section id="visaoEditorProduto" style="display: none;">
         <form id="formEditorProduto" onsubmit="window.AppAdmin.salvarProduto(event)">
           <div class="editor-produto-grid">
-            <!-- Coluna 1: Upload da Foto .webp -->
+            <!-- Coluna 1: Upload da Foto .webp (Ícone colorido de câmera do Figma) -->
             <label for="inputFotoProdutoAdmin" class="box-upload-foto-produto" title="Escolher imagem do produto">
-              <i id="iconeUploadProduto" class="fa-solid fa-camera"></i>
+              <svg id="iconeUploadProduto" width="84" height="84" viewBox="0 0 24 24" style="margin-bottom: 14px;">
+                <defs>
+                  <linearGradient id="camGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+                    <stop offset="0%" stop-color="#4f46e5" />
+                    <stop offset="35%" stop-color="#ec4899" />
+                    <stop offset="70%" stop-color="#f59e0b" />
+                    <stop offset="100%" stop-color="#22c55e" />
+                  </linearGradient>
+                </defs>
+                <path fill="url(#camGrad)" d="M9 3L7.17 5H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2h-3.17L15 3H9zm3 15c-2.76 0-5-2.24-5-5s2.24-5 5-5 5 2.24 5 5-2.24 5-5 5zm0-8c-1.65 0-3 1.35-3 3s1.35 3 3 3 3-1.35 3-3-1.35-3-3-3z"/>
+              </svg>
               <span id="textoUploadProduto">Toque para adicionar uma foto</span>
               <img id="imgUploadProdutoPreview" src="" alt="Foto do produto" style="display: none;" />
             </label>
@@ -297,7 +317,7 @@
               </div>
 
               <div style="max-width: 222px;">
-                <label for="inputProdutoPreco">Preço (R$)</label>
+                <label for="inputProdutoPreco">Preço</label>
                 <input
                   id="inputProdutoPreco"
                   type="text"
@@ -313,7 +333,7 @@
             <button
               type="button"
               class="btn-acao-icone"
-              style="font-size: 32px; font-weight: 700;"
+              style="font-size: 32px; font-weight: 500;"
               title="Cancelar e voltar"
               onclick="window.AppAdmin.fecharEditorProduto()"
             >
@@ -330,19 +350,19 @@
                   <div class="card-produto-img-wrap">
                     <img id="previewCardImg" src="" alt="Preview" />
                     <button type="button" class="btn-favorito-card" tabindex="-1">
-                      <i class="fa-regular fa-heart"></i>
+                      <i class="fa-solid fa-heart"></i>
                     </button>
                   </div>
-                  <h3 id="previewCardNome" class="card-produto-titulo" style="font-size: 17px;">Nome do Produto</h3>
+                  <h3 id="previewCardNome" class="card-produto-titulo" style="font-size: 17px;">Matcha</h3>
                   <p id="previewCardDesc" class="card-produto-desc" style="font-size: 12px; min-height: 48px;">
-                    Descrição do produto aparecerá aqui conforme você digita.
+                    Matcha, leite e gelo. Super refrescante. Perfeito para o verão.
                   </p>
                   <button type="button" class="btn-adicionar-pedido" style="height: 46px; border-radius: 34px;" tabindex="-1">
                     <span class="btn-adicionar-esquerda">
                       <i class="fa-solid fa-bag-shopping"></i>
                       <span class="btn-adicionar-texto" style="font-size: 11px;">Adicionar<br/>ao pedido</span>
                     </span>
-                    <span id="previewCardPreco" class="btn-adicionar-preco" style="font-size: 12px;">R$ 0,00</span>
+                    <span id="previewCardPreco" class="btn-adicionar-preco" style="font-size: 12px;">R$ 12,90</span>
                   </button>
                 </article>
               </div>
@@ -366,7 +386,7 @@
             type="text"
             class="input-borda-preta"
             style="max-width: 340px; height: 40px;"
-            placeholder="Buscar por nome, login, e-mail ou cargo..."
+            placeholder="Buscar por nome, CPF, e-mail ou cargo..."
             oninput="window.AppAdmin.carregarUsuariosAdmin()"
           />
           <select
@@ -381,7 +401,7 @@
           </select>
         </div>
 
-        <!-- Seção Interno (Funcionários e Admins) -->
+        <!-- Seção Interno (Tabela Funcionario) -->
         <div class="cabecalho-secao-usuarios">
           <h3>Interno</h3>
           <div class="acoes-secao-usuarios">
@@ -397,7 +417,7 @@
         </div>
         <div id="listaUsuariosInternos" class="lista-barras-admin"></div>
 
-        <!-- Seção Cliente -->
+        <!-- Seção Cliente (Tabela Cliente) -->
         <div class="cabecalho-secao-usuarios">
           <h3>Cliente</h3>
           <div class="acoes-secao-usuarios">
@@ -414,6 +434,11 @@
         <div id="listaUsuariosClientes" class="lista-barras-admin"></div>
       </section>
     </main>
+  </div>
+
+  <!-- Mensagem sutil ao final da página caso não esteja conectado no banco de dados -->
+  <div id="rodapeStatusBancoAdmin" class="rodape-status-banco-sutil" style="display: none;">
+    Não conectado no banco de dados
   </div>
 
   <!-- ========================================================================
@@ -443,7 +468,7 @@
     </div>
   </div>
 
-  <!-- Modal 2: Criar / Editar Usuário (Cliente, Funcionário ou Admin) -->
+  <!-- Modal 2: Criar / Editar Usuário (Tabelas Cliente e Funcionario) -->
   <div id="modalUsuario" class="modal-admin-overlay">
     <div class="modal-admin-card">
       <h3 id="tituloModalUsuario">Usuário</h3>
@@ -454,8 +479,8 @@
             <input id="inputModalUsuarioNome" type="text" class="input-borda-preta" required />
           </div>
           <div>
-            <label style="font-size: 13px; font-weight: 600;">Login (opcional, ex: Admin)</label>
-            <input id="inputModalUsuarioLogin" type="text" class="input-borda-preta" />
+            <label style="font-size: 13px; font-weight: 600;">CPF (ex: 000.000.000-00)</label>
+            <input id="inputModalUsuarioCpf" type="text" class="input-borda-preta" placeholder="Gerado automaticamente se vazio" />
           </div>
           <div>
             <label style="font-size: 13px; font-weight: 600;">E-mail</label>
@@ -466,16 +491,16 @@
             <input id="inputModalUsuarioTelefone" type="text" class="input-borda-preta" />
           </div>
           <div>
-            <label style="font-size: 13px; font-weight: 600;">Perfil / Tipo</label>
+            <label style="font-size: 13px; font-weight: 600;">Tabela / Perfil</label>
             <select id="inputModalUsuarioTipo" class="input-borda-preta">
-              <option value="cliente">Cliente</option>
-              <option value="funcionario">Funcionário (Interno)</option>
-              <option value="admin">Administrador (Operador)</option>
+              <option value="cliente">Cliente (Tabela Cliente)</option>
+              <option value="funcionario">Funcionário Interno (Tabela Funcionario)</option>
+              <option value="admin">Administrador / Operador (Tabela Funcionario)</option>
             </select>
           </div>
           <div>
-            <label style="font-size: 13px; font-weight: 600;">Cargo / Setor (para internos)</label>
-            <input id="inputModalUsuarioCargo" type="text" class="input-borda-preta" placeholder="Ex: Atendimento, Barista, Operador" />
+            <label style="font-size: 13px; font-weight: 600;">Cargo / Setor (para Funcionários)</label>
+            <input id="inputModalUsuarioCargo" type="text" class="input-borda-preta" placeholder="Ex: Atendimento, Barista, Administrador" />
           </div>
           <div>
             <label style="font-size: 13px; font-weight: 600;">Senha (deixe em branco para manter a atual)</label>
