@@ -5,3 +5,7 @@ node_modules/
 *.log
 GUIA_INTEGRACAO.md
 guia_integracao*.md
+ESTUDO_E_ARQUITETURA_BACKEND.md
+estudo_e_arquitetura*.md
+GUIA_POSTGRES_PGADMIN.md
+guia_postgres_pgadmin*.md

@@ -7,13 +7,9 @@ const pedidoCore = require('../../core/pedidoCore');
 const { asyncHandler } = require('../middlewares/errorMiddleware');
 
 // ============================================================================
-// HANDLERS DE SACOLA DO CLIENTE (TELA 16:336 "PEDIDO")
+// HANDLERS DE SACOLA DO CLIENTE
 // ============================================================================
 
-/**
- * GET /api/sacola
- * Retorna os itens atualmente adicionados ao pedido (sacola) pelo cliente logado.
- */
 const obterSacola = asyncHandler(async (req, res) => {
   const sacola = await pedidoCore.obterSacolaDetalhadaCore(req.usuario.id);
   res.status(200).json({
@@ -22,10 +18,6 @@ const obterSacola = asyncHandler(async (req, res) => {
   });
 });
 
-/**
- * POST /api/sacola/itens
- * Adiciona um item do cardápio ao pedido (sacola) do cliente ("Adicionar ao pedido").
- */
 const adicionarItemSacola = asyncHandler(async (req, res) => {
   const sacola = await pedidoCore.adicionarItemSacolaCore(req.usuario.id, req.body);
   res.status(200).json({
@@ -35,10 +27,6 @@ const adicionarItemSacola = asyncHandler(async (req, res) => {
   });
 });
 
-/**
- * PATCH /api/sacola/itens/:itemId
- * Atualiza a quantidade de um item na sacola do cliente.
- */
 const atualizarItemSacola = asyncHandler(async (req, res) => {
   const sacola = await pedidoCore.atualizarQuantidadeItemSacolaCore(
     req.usuario.id,
@@ -52,11 +40,6 @@ const atualizarItemSacola = asyncHandler(async (req, res) => {
   });
 });
 
-/**
- * DELETE /api/sacola/itens/:itemId
- * Remove um item da sacola (Botão "X" da tela 16:336 do Figma).
- * Suporta `?apenasUmaUnidade=true` caso o cliente queira decrementar 1 unidade.
- */
 const removerItemSacola = asyncHandler(async (req, res) => {
   const apenasUmaUnidade =
     req.query.apenasUmaUnidade === 'true' || req.body?.apenasUmaUnidade === true;
@@ -71,10 +54,6 @@ const removerItemSacola = asyncHandler(async (req, res) => {
   });
 });
 
-/**
- * DELETE /api/sacola
- * Limpa todos os itens da sacola atual ("Limpar pedido" da tela 16:336 do Figma).
- */
 const limparSacola = asyncHandler(async (req, res) => {
   const sacola = await pedidoCore.limparSacolaCore(req.usuario.id);
   res.status(200).json({
@@ -85,14 +64,9 @@ const limparSacola = asyncHandler(async (req, res) => {
 });
 
 // ============================================================================
-// HANDLERS DE PEDIDOS DO CLIENTE (TELAS 17:321 E 17:222)
+// HANDLERS DE PEDIDOS DO CLIENTE
 // ============================================================================
 
-/**
- * POST /api/pedidos
- * Envia o pedido para o estabelecimento (sem pagamento - tela 17:321 "Pedido realizado").
- * Aceita `{ itens: [...] }` no body OU converte automaticamente os itens da sacola do cliente.
- */
 const criarPedidoCliente = asyncHandler(async (req, res) => {
   const pedido = await pedidoCore.criarPedidoClienteCore(req.usuario.id, req.body);
   res.status(201).json({
@@ -103,10 +77,6 @@ const criarPedidoCliente = asyncHandler(async (req, res) => {
   });
 });
 
-/**
- * GET /api/pedidos
- * Lista todos os pedidos do cliente logado (separados em `emAndamento` e `historico`).
- */
 const listarMeusPedidos = asyncHandler(async (req, res) => {
   const resultado = await pedidoCore.listarPedidosClienteCore(req.usuario.id, {
     tipo: req.query.tipo,
@@ -118,10 +88,6 @@ const listarMeusPedidos = asyncHandler(async (req, res) => {
   });
 });
 
-/**
- * GET /api/pedidos/andamento
- * Lista exclusivamente os pedidos em andamento do cliente logado.
- */
 const listarMeusPedidosEmAndamento = asyncHandler(async (req, res) => {
   const resultado = await pedidoCore.listarPedidosClienteCore(req.usuario.id, {
     tipo: 'em_andamento',
@@ -135,10 +101,6 @@ const listarMeusPedidosEmAndamento = asyncHandler(async (req, res) => {
   });
 });
 
-/**
- * GET /api/pedidos/historico
- * Lista exclusivamente o histórico de pedidos finalizados/cancelados do cliente logado.
- */
 const listarMeuHistoricoPedidos = asyncHandler(async (req, res) => {
   const resultado = await pedidoCore.listarPedidosClienteCore(req.usuario.id, {
     tipo: 'historico',
@@ -152,10 +114,6 @@ const listarMeuHistoricoPedidos = asyncHandler(async (req, res) => {
   });
 });
 
-/**
- * GET /api/pedidos/:id
- * Busca detalhes de um pedido específico.
- */
 const obterPedidoPorId = asyncHandler(async (req, res) => {
   const pedido = await pedidoCore.buscarPedidoPorIdCore(req.params.id, req.usuario);
   res.status(200).json({
@@ -165,13 +123,9 @@ const obterPedidoPorId = asyncHandler(async (req, res) => {
 });
 
 // ============================================================================
-// HANDLERS DE PEDIDOS DO ADMINISTRADOR (TELA 143:150 "ADMINISTRADOR - PEDIDOS")
+// HANDLERS DE PEDIDOS DO ADMINISTRADOR
 // ============================================================================
 
-/**
- * GET /api/admin/pedidos
- * Lista todos os pedidos para o painel Admin, separando em `pendentes` e `concluidos`.
- */
 const listarPedidosAdmin = asyncHandler(async (req, res) => {
   const resultado = await pedidoCore.listarPedidosAdminCore({
     status: req.query.status,
@@ -183,10 +137,6 @@ const listarPedidosAdmin = asyncHandler(async (req, res) => {
   });
 });
 
-/**
- * GET /api/admin/pedidos/pendentes (ou /api/admin/pedidos/andamento)
- * Lista apenas os pedidos pendentes/em preparo no painel Admin.
- */
 const listarPedidosPendentesAdmin = asyncHandler(async (_req, res) => {
   const resultado = await pedidoCore.listarPedidosAdminCore();
   res.status(200).json({
@@ -197,10 +147,6 @@ const listarPedidosPendentesAdmin = asyncHandler(async (_req, res) => {
   });
 });
 
-/**
- * GET /api/admin/pedidos/concluidos (ou /api/admin/pedidos/historico)
- * Lista apenas o histórico de pedidos concluídos/cancelados no painel Admin.
- */
 const listarHistoricoPedidosAdmin = asyncHandler(async (_req, res) => {
   const resultado = await pedidoCore.listarPedidosAdminCore();
   res.status(200).json({
@@ -210,10 +156,15 @@ const listarHistoricoPedidosAdmin = asyncHandler(async (_req, res) => {
   });
 });
 
-/**
- * PATCH /api/admin/pedidos/:id/status
- * Altera o status de um pedido (`concluido`, `cancelado` ou `preparando`).
- */
+const atualizarPedidoAdmin = asyncHandler(async (req, res) => {
+  const pedido = await pedidoCore.atualizarPedidoAdminCore(req.params.id, req.body);
+  res.status(200).json({
+    sucesso: true,
+    mensagem: `Pedido #${pedido.numero} modificado com sucesso.`,
+    pedido,
+  });
+});
+
 const alterarStatusPedidoAdmin = asyncHandler(async (req, res) => {
   const pedido = await pedidoCore.alterarStatusPedidoAdminCore(
     req.params.id,
@@ -227,10 +178,6 @@ const alterarStatusPedidoAdmin = asyncHandler(async (req, res) => {
   });
 });
 
-/**
- * PATCH /api/admin/pedidos/:id/concluir
- * Marca um pedido em andamento como concluído (Botão "Concluir" na tela 143:150 do Figma).
- */
 const concluirPedidoAdmin = asyncHandler(async (req, res) => {
   const pedido = await pedidoCore.alterarStatusPedidoAdminCore(req.params.id, 'concluido');
   res.status(200).json({
@@ -240,10 +187,6 @@ const concluirPedidoAdmin = asyncHandler(async (req, res) => {
   });
 });
 
-/**
- * PATCH /api/admin/pedidos/:id/cancelar
- * Marca um pedido como cancelado (Botão "Cancelar" na tela 143:150 do Figma).
- */
 const cancelarPedidoAdmin = asyncHandler(async (req, res) => {
   const pedido = await pedidoCore.alterarStatusPedidoAdminCore(req.params.id, 'cancelado');
   res.status(200).json({
@@ -253,16 +196,21 @@ const cancelarPedidoAdmin = asyncHandler(async (req, res) => {
   });
 });
 
-/**
- * PATCH /api/admin/pedidos/:id/reabrir
- * Reabre um pedido concluído/cancelado voltando para "preparando" (Botão "Reabrir" na tela 143:150 do Figma).
- */
 const reabrirPedidoAdmin = asyncHandler(async (req, res) => {
   const pedido = await pedidoCore.alterarStatusPedidoAdminCore(req.params.id, 'preparando');
   res.status(200).json({
     sucesso: true,
     mensagem: `Pedido #${pedido.numero} reaberto e retornado para a fila de preparo.`,
     pedido,
+  });
+});
+
+const removerPedidoAdmin = asyncHandler(async (req, res) => {
+  const resultado = await pedidoCore.removerPedidoAdminCore(req.params.id);
+  res.status(200).json({
+    sucesso: true,
+    mensagem: 'Pedido removido com sucesso.',
+    ...resultado,
   });
 });
 
@@ -280,8 +228,10 @@ module.exports = {
   listarPedidosAdmin,
   listarPedidosPendentesAdmin,
   listarHistoricoPedidosAdmin,
+  atualizarPedidoAdmin,
   alterarStatusPedidoAdmin,
   concluirPedidoAdmin,
   cancelarPedidoAdmin,
   reabrirPedidoAdmin,
+  removerPedidoAdmin,
 };

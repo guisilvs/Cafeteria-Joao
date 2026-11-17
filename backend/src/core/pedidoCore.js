@@ -3,12 +3,8 @@
  * @description Regras de negócio para Sacola de Compras e Pedidos (Cliente e Administrador).
  *
  * Atende aos requisitos:
- * - Cliente: 4. adicionar itens ao pedido (sacola/carrinho + remover item + limpar pedido)
- * - Cliente: 5. enviar pedido para o estabelecimento (sem pagamento)
- * - Cliente: 6. ver pedidos em andamento
- * - Cliente: 7. ver histórico de pedidos
- * - Admin: 2. ver e gerenciar pedidos em andamento (Concluir, Cancelar)
- * - Admin: 3. ver e gerenciar histórico de pedidos (Concluídos/Cancelados, Reabrir)
+ * - Cliente: adicionar itens ao carrinho, enviar pedido, ver pedidos em andamento e histórico
+ * - Admin: ver e modificar pedidos (alterar itens, quantidades, status, unidade, previsão ou excluir)
  */
 
 const repositorio = require('./repositorioCore');
@@ -27,11 +23,6 @@ const {
 const UNIDADE_PADRAO = process.env.UNIDADE_PADRAO || 'Shopping Beira Mar';
 const PREVISAO_MINUTOS_PADRAO = Number(process.env.PREVISAO_RETIRADA_MINUTOS) || 5;
 
-/**
- * Formata uma data ISO no padrão brasileiro do protótipo: `DD/MM/AAAA - HH:mm`.
- * @param {string|null} isoDate
- * @returns {string|null}
- */
 function formatarDataHoraBR(isoDate) {
   if (!isoDate) return null;
   const d = new Date(isoDate);
@@ -46,12 +37,6 @@ function formatarDataHoraBR(isoDate) {
   return `${dia}/${mes}/${ano} - ${hora}:${min}`;
 }
 
-/**
- * Enriquecimento visual/semântico do objeto de pedido para o Front-end (Cliente e Admin),
- * contemplando todos os textos das telas 17:222, 17:321 e 143:150 do Figma.
- * @param {object} pedido
- * @returns {object}
- */
 function formatarPedido(pedido) {
   if (!pedido) return null;
 
@@ -93,12 +78,10 @@ function formatarPedido(pedido) {
     em_andamento: emAndamento,
     status_label: statusLabel,
     previsao_minutos: previsaoMinutos,
-    // Labels para a Visão do Usuário (Telas 17:222 e 17:321)
     previsao_label: `Previsão de retirada: ${previsaoMinutos} minutos`,
     texto_retirada_cliente: finalizadoFormatado
       ? `Você retirou o pedido em: ${finalizadoFormatado}`
       : null,
-    // Labels para a Visão do Administrador (Tela 143:150)
     tempo_ate_atraso_minutos: previsaoMinutos,
     tempo_ate_atraso_label: `Tempo até atraso: ${previsaoMinutos} minutos`,
     texto_separado_admin: finalizadoFormatado
@@ -110,14 +93,9 @@ function formatarPedido(pedido) {
 }
 
 // ============================================================================
-// REGRAS DE SACOLA / CARRINHO DO CLIENTE (TELA 16:336 "PEDIDO")
+// REGRAS DE SACOLA / CARRINHO DO CLIENTE
 // ============================================================================
 
-/**
- * Monta o resumo detalhado da sacola atual do cliente com preços atualizados do cardápio
- * e os campos exibidos no cabeçalho da tela 16:336 ("Para: ...", "Unidade: ...", "Pedido: #...").
- * @param {number|string} usuarioId
- */
 async function obterSacolaDetalhadaCore(usuarioId) {
   const idUsuario = validarId(usuarioId, 'ID do usuário');
   const usuario = await repositorio.buscarUsuarioPorId(idUsuario);
@@ -183,13 +161,6 @@ async function obterSacolaDetalhadaCore(usuarioId) {
   };
 }
 
-/**
- * Adiciona um item do cardápio à sacola de pedido do cliente ("Adicionar ao pedido").
- * @param {number|string} usuarioId
- * @param {object} dados
- * @param {number|string} dados.item_id
- * @param {number} [dados.quantidade=1]
- */
 async function adicionarItemSacolaCore(usuarioId, dados = {}) {
   const idUsuario = validarId(usuarioId, 'ID do usuário');
   const idItem = validarId(
@@ -230,12 +201,6 @@ async function adicionarItemSacolaCore(usuarioId, dados = {}) {
   return obterSacolaDetalhadaCore(idUsuario);
 }
 
-/**
- * Atualiza a quantidade de um item na sacola (se quantidade <= 0, remove o item).
- * @param {number|string} usuarioId
- * @param {number|string} itemId
- * @param {number} novaQuantidade
- */
 async function atualizarQuantidadeItemSacolaCore(usuarioId, itemId, novaQuantidade) {
   const idUsuario = validarId(usuarioId, 'ID do usuário');
   const idItem = validarId(itemId, 'ID do item');
@@ -260,13 +225,6 @@ async function atualizarQuantidadeItemSacolaCore(usuarioId, itemId, novaQuantida
   return obterSacolaDetalhadaCore(idUsuario);
 }
 
-/**
- * Remove um item específico da sacola (Botão "X" da tela 16:336 do Figma).
- * @param {number|string} usuarioId
- * @param {number|string} itemId
- * @param {object} [opcoes]
- * @param {boolean} [opcoes.apenasUmaUnidade=false]
- */
 async function removerItemSacolaCore(usuarioId, itemId, { apenasUmaUnidade = false } = {}) {
   const idUsuario = validarId(usuarioId, 'ID do usuário');
   const idItem = validarId(itemId, 'ID do item');
@@ -289,10 +247,6 @@ async function removerItemSacolaCore(usuarioId, itemId, { apenasUmaUnidade = fal
   return obterSacolaDetalhadaCore(idUsuario);
 }
 
-/**
- * Esvazia completamente a sacola do cliente (Botão "Limpar pedido" da tela 16:336 do Figma).
- * @param {number|string} usuarioId
- */
 async function limparSacolaCore(usuarioId) {
   const idUsuario = validarId(usuarioId, 'ID do usuário');
   await repositorio.salvarSacolaUsuario(idUsuario, []);
@@ -303,12 +257,6 @@ async function limparSacolaCore(usuarioId) {
 // CRIAÇÃO E GERENCIAMENTO DE PEDIDOS
 // ============================================================================
 
-/**
- * Normaliza e valida uma lista de itens de pedido contra o banco de dados,
- * garantindo que o preço seja sempre calculado no Back-end (segurança contra manipulação de preço no Front-end).
- *
- * @param {Array} itensEntrada
- */
 async function validarECalcularItensPedido(itensEntrada) {
   if (!Array.isArray(itensEntrada) || itensEntrada.length === 0) {
     throw erroValidacao('Adicione pelo menos um item do cardápio para realizar o pedido.');
@@ -366,15 +314,6 @@ async function validarECalcularItensPedido(itensEntrada) {
   };
 }
 
-/**
- * Envia um novo pedido para o estabelecimento (sem pagamento).
- * Se `dados.itens` não for informado no body, utiliza automaticamente os itens da sacola do cliente!
- *
- * @param {number|string} usuarioId
- * @param {object} [dados]
- * @param {Array} [dados.itens] - Lista opcional de itens (se omitida, usa a sacola atual)
- * @param {string} [dados.unidade_retirada] - Ex: "Shopping Beira Mar"
- */
 async function criarPedidoClienteCore(usuarioId, dados = {}) {
   const idUsuario = validarId(usuarioId, 'ID do usuário');
   const usuario = await repositorio.buscarUsuarioPorId(idUsuario);
@@ -397,6 +336,7 @@ async function criarPedidoClienteCore(usuarioId, dados = {}) {
 
   const unidadeRetirada =
     limparTextoSimples(dados.unidade_retirada || dados.unidadeRetirada) || UNIDADE_PADRAO;
+  const observacoes = dados.observacoes ? limparTextoSimples(dados.observacoes) : null;
 
   const novoPedido = await repositorio.criarPedido({
     usuario_id: usuario.id,
@@ -406,6 +346,7 @@ async function criarPedidoClienteCore(usuarioId, dados = {}) {
     total,
     unidade_retirada: unidadeRetirada,
     previsao_minutos: PREVISAO_MINUTOS_PADRAO,
+    observacoes,
     status: 'preparando',
   });
 
@@ -414,14 +355,6 @@ async function criarPedidoClienteCore(usuarioId, dados = {}) {
   return formatarPedido(novoPedido);
 }
 
-/**
- * Lista os pedidos do cliente logado (separados em `emAndamento` e `historico`, além da lista completa).
- * Atende aos requisitos 6 e 7 do cliente e à tela 17:222 ("Minha conta - Pedido em andamento").
- *
- * @param {number|string} usuarioId
- * @param {object} [filtros]
- * @param {'em_andamento' | 'historico' | 'todos'} [filtros.tipo='todos']
- */
 async function listarPedidosClienteCore(usuarioId, filtros = {}) {
   const idUsuario = validarId(usuarioId, 'ID do usuário');
   const todosBrutos = await repositorio.listarPedidos({ usuarioId: idUsuario });
@@ -454,11 +387,6 @@ async function listarPedidosClienteCore(usuarioId, filtros = {}) {
   };
 }
 
-/**
- * Busca um pedido específico por ID (permitindo acesso ao dono do pedido ou ao Admin).
- * @param {number|string} pedidoId
- * @param {object} usuarioSolicitante
- */
 async function buscarPedidoPorIdCore(pedidoId, usuarioSolicitante) {
   const id = validarId(pedidoId, 'ID do pedido');
   const pedido = await repositorio.buscarPedidoPorId(id);
@@ -478,15 +406,9 @@ async function buscarPedidoPorIdCore(pedidoId, usuarioSolicitante) {
 }
 
 // ============================================================================
-// GERENCIAMENTO DE PEDIDOS PELO ADMINISTRADOR (TELA 143:150 DO FIGMA)
+// GERENCIAMENTO E MODIFICAÇÃO DE PEDIDOS PELO ADMINISTRADOR
 // ============================================================================
 
-/**
- * Lista todos os pedidos para o painel Administrador, separando em `pendentes` (em andamento)
- * e `concluidos` (histórico), conforme a tela "Administrador - pedidos" (143:150).
- *
- * @param {object} [filtros]
- */
 async function listarPedidosAdminCore(filtros = {}) {
   const todosBrutos = await repositorio.listarPedidos({
     status: filtros.status,
@@ -507,28 +429,10 @@ async function listarPedidosAdminCore(filtros = {}) {
   };
 }
 
-/**
- * Altera o status de um pedido no painel Administrador:
- * - Concluir (`status = 'concluido'`) -> Botão "Concluir" no Figma
- * - Cancelar (`status = 'cancelado'`) -> Botão "Cancelar" no Figma
- * - Reabrir (`status = 'preparando'`) -> Botão "Reabrir" no Figma
- *
- * @param {number|string} pedidoId
- * @param {'concluido' | 'cancelado' | 'preparando' | 'pendente'} novoStatus
- */
-async function alterarStatusPedidoAdminCore(pedidoId, novoStatus) {
-  const id = validarId(pedidoId, 'ID do pedido');
-  const pedidoAtual = await repositorio.buscarPedidoPorId(id);
-  if (!pedidoAtual) {
-    throw erroNaoEncontrado('Pedido');
-  }
-
-  const statusNormalizado = String(novoStatus || '')
+function normalizarStatusPedido(statusBruto) {
+  const statusNormalizado = String(statusBruto || '')
     .trim()
     .toLowerCase();
-
-  let statusFinal;
-  let finalizadoEm = pedidoAtual.finalizado_em;
 
   if (
     statusNormalizado === 'concluido' ||
@@ -536,31 +440,109 @@ async function alterarStatusPedidoAdminCore(pedidoId, novoStatus) {
     statusNormalizado === 'finalizado' ||
     statusNormalizado === 'retirado'
   ) {
-    statusFinal = 'concluido';
-    finalizadoEm = new Date().toISOString();
-  } else if (statusNormalizado === 'cancelado' || statusNormalizado === 'cancelar') {
-    statusFinal = 'cancelado';
-    finalizadoEm = new Date().toISOString();
-  } else if (
+    return { status: 'concluido', finalizado_em: new Date().toISOString() };
+  }
+  if (statusNormalizado === 'cancelado' || statusNormalizado === 'cancelar') {
+    return { status: 'cancelado', finalizado_em: new Date().toISOString() };
+  }
+  if (
     statusNormalizado === 'preparando' ||
     statusNormalizado === 'pendente' ||
     statusNormalizado === 'reabrir' ||
     statusNormalizado === 'reaberto'
   ) {
-    statusFinal = 'preparando';
-    finalizadoEm = null;
-  } else {
-    throw erroValidacao(
-      'Status de pedido inválido. Use "concluido", "cancelado" ou "preparando" (reabrir).'
-    );
+    return {
+      status: statusNormalizado === 'pendente' ? 'pendente' : 'preparando',
+      finalizado_em: null,
+    };
   }
 
+  throw erroValidacao(
+    'Status de pedido inválido. Use "concluido", "cancelado", "preparando" ou "pendente".'
+  );
+}
+
+async function alterarStatusPedidoAdminCore(pedidoId, novoStatus) {
+  const id = validarId(pedidoId, 'ID do pedido');
+  const pedidoAtual = await repositorio.buscarPedidoPorId(id);
+  if (!pedidoAtual) {
+    throw erroNaoEncontrado('Pedido');
+  }
+
+  const { status, finalizado_em } = normalizarStatusPedido(novoStatus);
+
   const atualizado = await repositorio.atualizarPedido(pedidoAtual.id, {
-    status: statusFinal,
-    finalizado_em: finalizadoEm,
+    status,
+    finalizado_em,
   });
 
   return formatarPedido(atualizado);
+}
+
+/**
+ * Permite ao Administrador modificar um pedido de forma completa:
+ * - Alterar os itens/quantidades (recalculando o total automaticamente)
+ * - Alterar unidade de retirada, previsão de minutos, observações ou status
+ */
+async function atualizarPedidoAdminCore(pedidoId, dados = {}) {
+  const id = validarId(pedidoId, 'ID do pedido');
+  const pedidoAtual = await repositorio.buscarPedidoPorId(id);
+  if (!pedidoAtual) {
+    throw erroNaoEncontrado('Pedido');
+  }
+
+  const camposParaAtualizar = {};
+
+  if (Array.isArray(dados.itens) && dados.itens.length > 0) {
+    const recalculado = await validarECalcularItensPedido(dados.itens);
+    camposParaAtualizar.itens = recalculado.itens;
+    camposParaAtualizar.total = recalculado.total;
+  }
+
+  if (dados.unidade_retirada !== undefined || dados.unidadeRetirada !== undefined) {
+    const unidade = limparTextoSimples(dados.unidade_retirada || dados.unidadeRetirada);
+    if (!unidade) {
+      throw erroValidacao('A unidade de retirada não pode ficar vazia.');
+    }
+    camposParaAtualizar.unidade_retirada = unidade;
+  }
+
+  if (dados.previsao_minutos !== undefined || dados.previsaoMinutos !== undefined) {
+    const prev = Number(
+      dados.previsao_minutos !== undefined ? dados.previsao_minutos : dados.previsaoMinutos
+    );
+    if (!Number.isInteger(prev) || prev < 1 || prev > 240) {
+      throw erroValidacao('A previsão de retirada deve ser entre 1 e 240 minutos.');
+    }
+    camposParaAtualizar.previsao_minutos = prev;
+  }
+
+  if (dados.observacoes !== undefined) {
+    camposParaAtualizar.observacoes = dados.observacoes
+      ? limparTextoSimples(dados.observacoes)
+      : null;
+  }
+
+  if (dados.status !== undefined) {
+    const { status, finalizado_em } = normalizarStatusPedido(dados.status);
+    camposParaAtualizar.status = status;
+    camposParaAtualizar.finalizado_em = finalizado_em;
+  }
+
+  const atualizado = await repositorio.atualizarPedido(pedidoAtual.id, camposParaAtualizar);
+  return formatarPedido(atualizado);
+}
+
+/**
+ * Permite ao Administrador remover um pedido do sistema caso necessário.
+ */
+async function removerPedidoAdminCore(pedidoId) {
+  const id = validarId(pedidoId, 'ID do pedido');
+  const removido = await repositorio.removerPedido(id);
+  if (!removido) {
+    throw erroNaoEncontrado('Pedido');
+  }
+  return { id, removido: true };
 }
 
 module.exports = {
@@ -578,4 +560,6 @@ module.exports = {
   // Pedidos do Administrador
   listarPedidosAdminCore,
   alterarStatusPedidoAdminCore,
+  atualizarPedidoAdminCore,
+  removerPedidoAdminCore,
 };

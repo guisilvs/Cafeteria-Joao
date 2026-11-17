@@ -175,6 +175,7 @@ async function criarUsuarioPeloAdmin(dados = {}) {
   const ativo = dados.ativo !== undefined ? Boolean(dados.ativo) : true;
 
   const novoUsuario = await repositorio.criarUsuario({
+    login: dados.login ? limparTextoSimples(dados.login) : null,
     nome,
     email,
     telefone,
@@ -183,6 +184,7 @@ async function criarUsuarioPeloAdmin(dados = {}) {
     cargo,
     foto_webp,
     ativo,
+    precisa_trocar_senha: Boolean(dados.precisa_trocar_senha),
     favoritos: [],
   });
 
@@ -268,11 +270,16 @@ async function atualizarUsuarioCore(idAlvo, dados = {}, usuarioSolicitante = nul
     );
   }
 
+  if (dados.login !== undefined) {
+    camposParaAtualizar.login = dados.login ? limparTextoSimples(dados.login) : null;
+  }
+
   if (dados.senha) {
     const confirmarSenha =
       dados.confirmarSenha !== undefined ? dados.confirmarSenha : dados.confirmar_senha;
     validarSenha(dados.senha, confirmarSenha);
     camposParaAtualizar.senha_hash = await authCore.gerarHashSenha(dados.senha);
+    camposParaAtualizar.precisa_trocar_senha = false;
   }
 
   const entradaFoto = dados.foto || dados.foto_webp || dados.imagem;

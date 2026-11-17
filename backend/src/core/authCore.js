@@ -6,9 +6,8 @@
  * - Geração de hash de senhas com `bcrypt`
  * - Comparação segura de senhas com hash
  * - Emissão e validação de tokens JWT para sessões de clientes e administradores
- * - Validação de login por E-mail ou Telefone (conforme telas 82:113 e 143:145 do Figma)
- * - Recuperação/redefinição de senha ("Esqueceu sua senha?" na tela 82:113 do Figma)
- * - Verificação de permissões de acesso (Cliente vs Funcionário/Admin)
+ * - Validação de login por Login ("Admin"), E-mail ou Telefone
+ * - Alteração da senha padrão do Administrador ("123456") e recuperação de senha
  */
 
 const bcrypt = require('bcrypt');
@@ -32,8 +31,7 @@ const JWT_SECRET = process.env.JWT_SECRET || 'cafeteria_do_joao_chave_secreta_pa
 const JWT_EXPIRES_IN = process.env.JWT_EXPIRES_IN || '24h';
 
 /**
- * Remove campos sensíveis (como `senha_hash`) antes de retornar o objeto de usuário para a API,
- * e adiciona rótulos úteis para as telas de Cliente ("Olá, Guilherme Silveira") e Admin ("Operador Guilherme Silveira").
+ * Remove campos sensíveis (como `senha_hash`) antes de retornar o objeto de usuário para a API.
  * @param {object} usuario
  * @returns {object|null}
  */
@@ -45,6 +43,7 @@ function sanitizarUsuarioPublico(usuario) {
   return {
     ...dadosSeguros,
     eh_admin: ehAdmin,
+    precisa_trocar_senha: Boolean(dadosSeguros.precisa_trocar_senha),
     saudacao_cliente: `Olá, ${dadosSeguros.nome}`,
     cargo_exibicao: ehAdmin ? dadosSeguros.cargo || 'Operador' : 'Cliente',
     titulo_operador_admin: ehAdmin
@@ -83,6 +82,7 @@ function gerarToken(usuario) {
   const payload = {
     sub: usuario.id,
     id: usuario.id,
+    login: usuario.login || null,
     nome: usuario.nome,
     email: usuario.email,
     tipo: usuario.tipo,
@@ -125,28 +125,21 @@ function usuarioEhAdminOuFuncionario(usuario) {
 }
 
 /**
- * Autentica um usuário (Cliente ou Administrador/Funcionário) usando E-mail ou Telefone + Senha.
- *
- * @param {object} credenciais
- * @param {string} [credenciais.identificador] - E-mail ou telefone (também aceita `email` ou `telefone`)
- * @param {string} [credenciais.email]
- * @param {string} [credenciais.telefone]
- * @param {string} credenciais.senha
- * @param {boolean} [credenciais.exigirAdmin=false] - Se true, permite login apenas de funcionários/admins
- * @returns {Promise<{ token: string, usuario: object }>}
+ * Autentica um usuário (Cliente ou Administrador/Funcionário) usando Login ("Admin"), E-mail ou Telefone + Senha.
  */
 async function autenticarUsuario(credenciais = {}) {
   const identificadorBruto =
     credenciais.identificador ||
     credenciais.emailOuTelefone ||
     credenciais.login ||
+    credenciais.usuario ||
     credenciais.email ||
     credenciais.telefone;
 
   const { senha, exigirAdmin = false } = credenciais;
 
   if (!identificadorBruto) {
-    throw erroValidacao('Informe seu e-mail ou telefone.');
+    throw erroValidacao('Informe seu login, e-mail ou telefone.');
   }
   if (!senha) {
     throw erroValidacao('Informe sua senha.');
@@ -154,13 +147,17 @@ async function autenticarUsuario(credenciais = {}) {
 
   const { tipo, valor } = normalizarIdentificadorLogin(identificadorBruto);
 
-  const usuario =
-    tipo === 'email'
-      ? await repositorio.buscarUsuarioPorEmail(valor)
-      : await repositorio.buscarUsuarioPorTelefone(valor);
+  let usuario = null;
+  if (tipo === 'email') {
+    usuario = await repositorio.buscarUsuarioPorEmail(valor);
+  } else if (tipo === 'telefone') {
+    usuario = await repositorio.buscarUsuarioPorTelefone(valor);
+  } else {
+    usuario = await repositorio.buscarUsuarioPorLogin(valor);
+  }
 
   if (!usuario) {
-    throw erroNaoAutorizado('E-mail/telefone ou senha incorretos.');
+    throw erroNaoAutorizado('Credenciais incorretas. Verifique seu login/e-mail e senha.');
   }
 
   if (usuario.ativo === false) {
@@ -169,7 +166,7 @@ async function autenticarUsuario(credenciais = {}) {
 
   const senhaValida = await verificarSenha(senha, usuario.senha_hash);
   if (!senhaValida) {
-    throw erroNaoAutorizado('E-mail/telefone ou senha incorretos.');
+    throw erroNaoAutorizado('Credenciais incorretas. Verifique seu login/e-mail e senha.');
   }
 
   if (exigirAdmin && !usuarioEhAdminOuFuncionario(usuario)) {
@@ -189,14 +186,14 @@ async function autenticarUsuario(credenciais = {}) {
   return {
     token,
     usuario: usuarioPublico,
+    aviso_troca_senha: usuarioPublico.precisa_trocar_senha
+      ? 'Você está utilizando a senha padrão inicial. Recomendamos alterá-la no painel.'
+      : null,
   };
 }
 
 /**
- * Adiciona indicadores de notificação para as bolinhas de alerta do protótipo:
- * - Visão Usuário (Tela 17:132 `Ellipse 1`): `possui_pedido_em_andamento`
- * - Visão Admin (Tela 143:146 `Ellipse 2`): `possui_pedidos_pendentes`
- * @param {object} usuario
+ * Adiciona indicadores de notificação para as bolinhas de alerta do protótipo.
  */
 async function enriquecerUsuarioComIndicadores(usuario) {
   const base = sanitizarUsuarioPublico(usuario);
@@ -226,8 +223,6 @@ async function enriquecerUsuarioComIndicadores(usuario) {
 
 /**
  * Recupera os dados atualizados do usuário autenticado a partir do seu ID.
- * @param {number|string} usuarioId
- * @returns {Promise<object>}
  */
 async function obterUsuarioAutenticado(usuarioId) {
   const usuario = await repositorio.buscarUsuarioPorId(usuarioId);
@@ -241,14 +236,41 @@ async function obterUsuarioAutenticado(usuarioId) {
 }
 
 /**
- * Permite ao usuário redefinir sua senha ("Esqueceu sua senha?" - tela 82:113 do Figma)
+ * Permite que o usuário logado (especialmente o `Admin` padrão com senha inicial `123456`)
+ * modifique sua própria senha com segurança.
+ */
+async function alterarSenhaAutenticado(usuarioId, dados = {}) {
+  const usuario = await repositorio.buscarUsuarioPorId(usuarioId);
+  if (!usuario) {
+    throw erroNaoEncontrado('Usuário');
+  }
+
+  const senhaAtual = dados.senhaAtual || dados.senha_atual;
+  const novaSenha = dados.novaSenha || dados.nova_senha || dados.senha;
+  const confirmarSenha =
+    dados.confirmarSenha !== undefined ? dados.confirmarSenha : dados.confirmar_senha;
+
+  if (senhaAtual !== undefined) {
+    const confere = await verificarSenha(senhaAtual, usuario.senha_hash);
+    if (!confere) {
+      throw erroNaoAutorizado('A senha atual informada está incorreta.');
+    }
+  }
+
+  validarSenha(novaSenha, confirmarSenha);
+
+  const novoHash = await gerarHashSenha(novaSenha);
+  const atualizado = await repositorio.atualizarUsuario(usuario.id, {
+    senha_hash: novoHash,
+    precisa_trocar_senha: false,
+  });
+
+  return sanitizarUsuarioPublico(atualizado);
+}
+
+/**
+ * Permite ao usuário redefinir sua senha ("Esqueceu sua senha?")
  * confirmando seu E-mail + Telefone cadastrado + Nova Senha.
- *
- * @param {object} dados
- * @param {string} dados.email
- * @param {string} dados.telefone
- * @param {string} dados.novaSenha
- * @param {string} [dados.confirmarSenha]
  */
 async function redefinirSenhaPorConfirmacao(dados = {}) {
   const email = validarEmail(dados.email);
@@ -273,7 +295,10 @@ async function redefinirSenhaPorConfirmacao(dados = {}) {
   }
 
   const novoHash = await gerarHashSenha(novaSenha);
-  await repositorio.atualizarUsuario(usuario.id, { senha_hash: novoHash });
+  await repositorio.atualizarUsuario(usuario.id, {
+    senha_hash: novoHash,
+    precisa_trocar_senha: false,
+  });
 
   return {
     redefinida: true,
@@ -291,5 +316,6 @@ module.exports = {
   usuarioEhAdminOuFuncionario,
   autenticarUsuario,
   obterUsuarioAutenticado,
+  alterarSenhaAutenticado,
   redefinirSenhaPorConfirmacao,
 };

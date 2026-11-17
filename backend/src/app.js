@@ -1,14 +1,16 @@
 /**
  * @file app.js
  * @description Ponto de entrada do servidor Back-end da Cafeteria do João.
- * Inicializa o Express na porta 3000 (ou process.env.PORT), aplica os middlewares
- * de segurança e conecta a camada de rotas (`/api`).
+ * Inicializa o banco PostgreSQL (criando o banco, as tabelas e o usuário Admin automaticamente),
+ * aplica os middlewares de segurança e inicia o Express na porta 3000.
  */
 
-require('dotenv').config();
+const path = require('path');
+require('dotenv').config({ path: path.resolve(__dirname, '../.env') });
 
 const express = require('express');
 const rotasApi = require('./api/routes');
+const { inicializarBancoDeDados } = require('./database/connection');
 const {
   criarMiddlewareCors,
   criarMiddlewareHelmet,
@@ -39,10 +41,12 @@ app.use('/', rotasApi);
 app.use(rotaNaoEncontrada);
 app.use(tratadorDeErros);
 
-// 5. Inicializa o servidor quando executado diretamente (`node src/app.js`)
+// 5. Inicializa o PostgreSQL (tabelas + Admin padrão) e sobe o servidor Express
 if (require.main === module) {
-  app.listen(PORTA, () => {
-    console.log(`☕ Servidor Back-end da Cafeteria do João rodando em http://localhost:${PORTA}`);
+  inicializarBancoDeDados().finally(() => {
+    app.listen(PORTA, () => {
+      console.log(`☕ Servidor Back-end da Cafeteria do João rodando em http://localhost:${PORTA}`);
+    });
   });
 }
 

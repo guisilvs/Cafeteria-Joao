@@ -53,8 +53,7 @@ function validarEmail(email) {
 }
 
 /**
- * Normaliza número de telefone mantendo apenas dígitos (e sinal + opcional).
- * Aceita formatos como "(48) 99999-9999", "48999999999", etc.
+ * Normaliza número de telefone mantendo apenas dígitos.
  * @param {string} telefone
  * @param {boolean} [obrigatorio=true]
  * @returns {string}
@@ -76,15 +75,14 @@ function validarTelefone(telefone, obrigatorio = true) {
 }
 
 /**
- * Verifica se um identificador de login é um e-mail ou um telefone e o normaliza.
- * Usado nas telas de Login Cliente e Login Administrador ("E-mail ou telefone").
+ * Verifica se um identificador de login é um e-mail, um telefone ou um nome de usuário/login (ex: "Admin").
  * @param {string} identificador
- * @returns {{ tipo: 'email' | 'telefone', valor: string }}
+ * @returns {{ tipo: 'email' | 'telefone' | 'login', valor: string }}
  */
 function normalizarIdentificadorLogin(identificador) {
   const texto = String(identificador || '').trim();
   if (!texto) {
-    throw erroValidacao('Informe seu e-mail ou telefone para entrar.');
+    throw erroValidacao('Informe seu login, e-mail ou telefone para entrar.');
   }
 
   if (texto.includes('@')) {
@@ -95,18 +93,28 @@ function normalizarIdentificadorLogin(identificador) {
   }
 
   const digitos = texto.replace(/\D/g, '');
-  if (digitos.length >= 8) {
+  const temLetras = /[a-zA-ZÀ-ÿ]/.test(texto);
+
+  if (!temLetras && digitos.length >= 8) {
     return {
       tipo: 'telefone',
       valor: digitos,
     };
   }
 
-  throw erroValidacao('Informe um e-mail ou número de telefone válido.');
+  if (texto.length >= 2 && texto.length <= 80) {
+    return {
+      tipo: 'login',
+      valor: limparTextoSimples(texto),
+    };
+  }
+
+  throw erroValidacao('Informe um login, e-mail ou número de telefone válido.');
 }
 
 /**
- * Valida a senha do usuário quanto a tamanho mínimo e máximo (limite do bcrypt = 72 bytes).
+ * Valida a senha do usuário quanto a tamanho mínimo (6 caracteres, atendendo ao Admin 123456)
+ * e máximo (limite do bcrypt = 72 bytes).
  * @param {string} senha
  * @param {string} [confirmarSenha]
  */

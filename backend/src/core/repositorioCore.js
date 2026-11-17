@@ -1,27 +1,25 @@
 /**
  * @file repositorioCore.js
- * @description Camada adaptadora de persistência (Ponte Core <-> Database).
+ * @description Camada adaptadora de persistência (Ponte Core <-> PostgreSQL `database/queries.js`).
  *
  * Responsabilidade:
- * - Conectar os módulos de regras de negócio (`core/`) às queries SQL (`database/queries.js`).
- * - Caso o time de Banco de Dados já tenha criado `src/database/queries.js`, todas as chamadas
- *   são delegadas diretamente para lá.
- * - Caso `src/database/queries.js` ainda não tenha sido implementado, utiliza um banco em
- *   memória pré-carregado com todos os dados das duas visões do protótipo do Figma
- *   (Visão Usuário 161:289 e Visão Administrador 161:290), permitindo que o time de Front-end
- *   consuma e teste 100% das APIs imediatamente.
+ * - Conectar os módulos de regras de negócio (`core/`) às queries SQL do PostgreSQL (`database/queries.js`).
+ * - Quando o PostgreSQL local está conectado, 100% das leituras e gravações ocorrem nas tabelas
+ *   `Categoria`, `Produto`, `Usuario`, `Sacola_Item` e `Pedido` (visualizáveis no pgAdmin).
+ * - Caso o PostgreSQL ainda não esteja acessível, mantém fallback seguro em memória com o usuário
+ *   padrão `Admin` (`123456`).
  */
 
 const fs = require('fs');
 const path = require('path');
 const bcrypt = require('bcrypt');
+const {
+  estaConectadoAoPostgres,
+  obterUltimoErroPostgres,
+} = require('../database/connection');
 
 const CAMINHO_QUERIES = path.resolve(__dirname, '../database/queries.js');
 
-/**
- * Tenta carregar o módulo `database/queries.js` caso já tenha sido criado pelo time de BD.
- * @returns {Record<string, Function> | null}
- */
 function carregarModuloQueries() {
   try {
     if (fs.existsSync(CAMINHO_QUERIES)) {
@@ -31,17 +29,16 @@ function carregarModuloQueries() {
       }
     }
   } catch (erro) {
-    console.warn('[RepositorioCore] Aviso ao carregar database/queries.js (usando fallback em memória):', erro.message);
+    console.warn('[RepositorioCore] Aviso ao carregar database/queries.js:', erro.message);
   }
   return null;
 }
 
 // ============================================================================
-// ESTADO EM MEMÓRIA (FIEL ÀS TELAS 161:289 E 161:290 DO FIGMA)
+// ESTADO EM MEMÓRIA (FALLBACK CASO O POSTGRESQL AINDA NÃO ESTEJA CONFIGURADO)
 // ============================================================================
 
-const SENHA_HASH_PADRAO_CLIENTE = bcrypt.hashSync('123456', 10);
-const SENHA_HASH_PADRAO_ADMIN = bcrypt.hashSync('admin123', 10);
+const SENHA_HASH_PADRAO_123456 = bcrypt.hashSync('123456', 10);
 
 const estadoMemoria = {
   contadores: {
@@ -58,7 +55,6 @@ const estadoMemoria = {
   ],
 
   itensCardapio: [
-    // Categoria 1: Gelados (Telas 1:2, 14:41, 143:999)
     {
       id: 1,
       categoria_id: 1,
@@ -103,8 +99,6 @@ const estadoMemoria = {
       oculto: false,
       criado_em: '2026-05-01T08:00:00.000Z',
     },
-
-    // Categoria 2: Quentes (Telas 13:250, 14:128)
     {
       id: 5,
       categoria_id: 2,
@@ -149,8 +143,6 @@ const estadoMemoria = {
       oculto: false,
       criado_em: '2026-05-01T08:00:00.000Z',
     },
-
-    // Categoria 3: Sanduiches (Telas 13:148, 14:180)
     {
       id: 9,
       categoria_id: 3,
@@ -200,124 +192,61 @@ const estadoMemoria = {
   usuarios: [
     {
       id: 1,
+      login: 'Admin',
+      nome: 'Admin',
+      email: 'admin@cafeteriajoao.com',
+      telefone: '48999990000',
+      senha_hash: SENHA_HASH_PADRAO_123456,
+      tipo: 'admin',
+      cargo: 'Administrador',
+      foto_webp: null,
+      ativo: true,
+      precisa_trocar_senha: true,
+      favoritos: [],
+      ultimo_acesso: new Date().toISOString(),
+      criado_em: '2026-05-01T08:00:00.000Z',
+    },
+    {
+      id: 2,
+      login: 'guilherme',
       nome: 'Guilherme Silveira',
       email: 'guilherme@cafeteriajoao.com',
       telefone: '48999990001',
-      senha_hash: SENHA_HASH_PADRAO_CLIENTE,
+      senha_hash: SENHA_HASH_PADRAO_123456,
       tipo: 'cliente',
       cargo: null,
       foto_webp: null,
       ativo: true,
-      favoritos: [2, 5, 9, 12], // Matcha, Espresso Duplo, Sanduiche Clássico, Misto Pão de Queijo (telas 14:41, 14:128, 14:180)
+      precisa_trocar_senha: false,
+      favoritos: [2, 5, 9, 12],
       ultimo_acesso: new Date().toISOString(),
       criado_em: '2026-05-01T10:00:00.000Z',
     },
     {
-      id: 2,
+      id: 3,
+      login: 'lucas',
       nome: 'Lucas Sales',
       email: 'lucas@cafeteriajoao.com',
       telefone: '48999990002',
-      senha_hash: SENHA_HASH_PADRAO_ADMIN,
+      senha_hash: SENHA_HASH_PADRAO_123456,
       tipo: 'funcionario',
       cargo: 'Atendimento',
       foto_webp: null,
       ativo: true,
+      precisa_trocar_senha: false,
       favoritos: [],
       ultimo_acesso: new Date().toISOString(),
       criado_em: '2026-05-01T09:00:00.000Z',
-    },
-    {
-      id: 3,
-      nome: 'Guilherme Silveira',
-      email: 'admin@cafeteriajoao.com',
-      telefone: '48999990000',
-      senha_hash: SENHA_HASH_PADRAO_ADMIN,
-      tipo: 'admin',
-      cargo: 'Operador',
-      foto_webp: null,
-      ativo: true,
-      favoritos: [],
-      ultimo_acesso: new Date().toISOString(),
-      criado_em: '2026-05-01T08:00:00.000Z',
     },
   ],
 
   sacolas: new Map(),
 
-  // Pedidos fiéis às telas 17:222 (Minha conta) e 143:150 (Administrador - pedidos)
   pedidos: [
-    {
-      id: 52675,
-      numero: 52675,
-      usuario_id: 1,
-      cliente_nome: 'Guilherme Silveira',
-      cliente_foto: null,
-      itens: [
-        { item_id: 4, nome: 'Latte', preco_unitario: 10.00, quantidade: 1, subtotal: 10.00 },
-        { item_id: 9, nome: 'Bolo de cenoura', preco_unitario: 9.30, quantidade: 1, subtotal: 9.30 },
-      ],
-      total: 19.30,
-      unidade_retirada: 'Shopping Beira Mar',
-      previsao_minutos: 5,
-      status: 'concluido',
-      criado_em: '2026-05-06T11:00:00.000Z',
-      finalizado_em: '2026-05-06T11:10:00.000Z',
-    },
-    {
-      id: 52676,
-      numero: 52676,
-      usuario_id: 1,
-      cliente_nome: 'Guilherme Silveira',
-      cliente_foto: null,
-      itens: [
-        { item_id: 6, nome: 'Cappuccino', preco_unitario: 12.00, quantidade: 1, subtotal: 12.00 },
-        { item_id: 12, nome: 'Pão de queijo', preco_unitario: 5.00, quantidade: 2, subtotal: 10.00 },
-      ],
-      total: 22.00,
-      unidade_retirada: 'Shopping Beira Mar',
-      previsao_minutos: 5,
-      status: 'concluido',
-      criado_em: '2026-05-07T15:10:00.000Z',
-      finalizado_em: '2026-05-07T15:20:00.000Z',
-    },
-    {
-      id: 52677,
-      numero: 52677,
-      usuario_id: 1,
-      cliente_nome: 'Guilherme Silveira',
-      cliente_foto: null,
-      itens: [
-        { item_id: 3, nome: 'Chá gelado', preco_unitario: 5.00, quantidade: 2, subtotal: 10.00 },
-        { item_id: 9, nome: 'Croissant de chocolate', preco_unitario: 8.50, quantidade: 1, subtotal: 8.50 },
-      ],
-      total: 18.50,
-      unidade_retirada: 'Shopping Beira Mar',
-      previsao_minutos: 5,
-      status: 'concluido',
-      criado_em: '2026-05-08T09:35:00.000Z',
-      finalizado_em: '2026-05-08T09:45:00.000Z',
-    },
-    {
-      id: 52678,
-      numero: 52678,
-      usuario_id: 1,
-      cliente_nome: 'Guilherme Silveira',
-      cliente_foto: null,
-      itens: [
-        { item_id: 1, nome: 'Café com Baunilha', preco_unitario: 10.90, quantidade: 1, subtotal: 10.90 },
-        { item_id: 10, nome: 'Queijo Quente', preco_unitario: 12.90, quantidade: 1, subtotal: 12.90 },
-      ],
-      total: 23.80,
-      unidade_retirada: 'Shopping Beira Mar',
-      previsao_minutos: 5,
-      status: 'concluido',
-      criado_em: '2026-05-09T13:20:00.000Z',
-      finalizado_em: '2026-05-09T13:29:00.000Z',
-    },
     {
       id: 52679,
       numero: 52679,
-      usuario_id: 1,
+      usuario_id: 2,
       cliente_nome: 'Guilherme Silveira',
       cliente_foto: null,
       itens: [
@@ -327,6 +256,7 @@ const estadoMemoria = {
       total: 23.80,
       unidade_retirada: 'Shopping Beira Mar',
       previsao_minutos: 5,
+      observacoes: null,
       status: 'concluido',
       criado_em: '2026-05-10T10:05:00.000Z',
       finalizado_em: '2026-05-10T10:12:00.000Z',
@@ -334,7 +264,7 @@ const estadoMemoria = {
     {
       id: 52680,
       numero: 52680,
-      usuario_id: 1,
+      usuario_id: 2,
       cliente_nome: 'Guilherme Silveira',
       cliente_foto: null,
       itens: [
@@ -345,6 +275,7 @@ const estadoMemoria = {
       total: 37.80,
       unidade_retirada: 'Shopping Beira Mar',
       previsao_minutos: 5,
+      observacoes: null,
       status: 'preparando',
       criado_em: new Date().toISOString(),
       finalizado_em: null,
@@ -353,18 +284,17 @@ const estadoMemoria = {
 };
 
 /**
- * Executa a função correspondente em `database/queries.js` se existir,
- * caso contrário executa o fallback em memória.
- * @param {string[]} nomesFuncoes - Possíveis nomes da função em `queries.js`
- * @param {Function} fallbackFn - Implementação em memória
- * @param  {...any} args - Argumentos repassados
+ * Executa a função correspondente em `database/queries.js` quando o PostgreSQL está conectado,
+ * ou recorre ao fallback em memória se o banco local ainda não estiver acessível.
  */
 async function executarQueryOuFallback(nomesFuncoes, fallbackFn, ...args) {
-  const queries = carregarModuloQueries();
-  if (queries) {
-    for (const nome of nomesFuncoes) {
-      if (typeof queries[nome] === 'function') {
-        return await queries[nome](...args);
+  if (estaConectadoAoPostgres()) {
+    const queries = carregarModuloQueries();
+    if (queries) {
+      for (const nome of nomesFuncoes) {
+        if (typeof queries[nome] === 'function') {
+          return await queries[nome](...args);
+        }
       }
     }
   }
@@ -377,7 +307,7 @@ async function executarQueryOuFallback(nomesFuncoes, fallbackFn, ...args) {
 
 async function buscarUsuarioPorId(id) {
   return executarQueryOuFallback(
-    ['buscarUsuarioPorId', 'getUsuarioById', 'selectUsuarioPorId'],
+    ['buscarUsuarioPorId', 'getUsuarioById'],
     async (idBusca) => {
       const u = estadoMemoria.usuarios.find((item) => String(item.id) === String(idBusca));
       return u ? { ...u, favoritos: [...(u.favoritos || [])] } : null;
@@ -412,9 +342,25 @@ async function buscarUsuarioPorTelefone(telefone) {
   );
 }
 
+async function buscarUsuarioPorLogin(loginOuNome) {
+  return executarQueryOuFallback(
+    ['buscarUsuarioPorLogin', 'getUsuarioByLogin'],
+    async (termoBusca) => {
+      const normalizado = String(termoBusca || '').trim().toLowerCase();
+      const u = estadoMemoria.usuarios.find(
+        (item) =>
+          (item.login && item.login.toLowerCase() === normalizado) ||
+          (item.nome && item.nome.toLowerCase() === normalizado)
+      );
+      return u ? { ...u, favoritos: [...(u.favoritos || [])] } : null;
+    },
+    loginOuNome
+  );
+}
+
 async function listarUsuarios(filtros = {}) {
   return executarQueryOuFallback(
-    ['listarUsuarios', 'getUsuarios', 'selectUsuarios'],
+    ['listarUsuarios', 'getUsuarios'],
     async ({ tipo, ativo, cargo, busca } = {}) => {
       let lista = estadoMemoria.usuarios.map((u) => ({ ...u, favoritos: [...(u.favoritos || [])] }));
 
@@ -441,6 +387,7 @@ async function listarUsuarios(filtros = {}) {
         lista = lista.filter(
           (u) =>
             (u.nome && u.nome.toLowerCase().includes(termo)) ||
+            (u.login && u.login.toLowerCase().includes(termo)) ||
             (u.email && u.email.toLowerCase().includes(termo)) ||
             (u.telefone && u.telefone.includes(termo)) ||
             (u.cargo && u.cargo.toLowerCase().includes(termo))
@@ -455,11 +402,12 @@ async function listarUsuarios(filtros = {}) {
 
 async function criarUsuario(dadosUsuario) {
   return executarQueryOuFallback(
-    ['criarUsuario', 'inserirUsuario', 'insertUsuario'],
+    ['criarUsuario', 'inserirUsuario'],
     async (dados) => {
       estadoMemoria.contadores.usuarios += 1;
       const novo = {
         id: estadoMemoria.contadores.usuarios,
+        login: dados.login || null,
         nome: dados.nome,
         email: dados.email,
         telefone: dados.telefone || '',
@@ -468,6 +416,7 @@ async function criarUsuario(dadosUsuario) {
         cargo: dados.cargo || null,
         foto_webp: dados.foto_webp || null,
         ativo: dados.ativo !== undefined ? Boolean(dados.ativo) : true,
+        precisa_trocar_senha: Boolean(dados.precisa_trocar_senha),
         favoritos: Array.isArray(dados.favoritos) ? dados.favoritos : [],
         ultimo_acesso: new Date().toISOString(),
         criado_em: new Date().toISOString(),
@@ -492,6 +441,9 @@ async function atualizarUsuario(id, camposAtualizados) {
         ...Object.fromEntries(Object.entries(campos).filter(([, v]) => v !== undefined)),
         id: atual.id,
       };
+      if (campos.senha_hash && campos.precisa_trocar_senha === undefined) {
+        atualizado.precisa_trocar_senha = false;
+      }
       estadoMemoria.usuarios[idx] = atualizado;
       return { ...atualizado };
     },
@@ -502,7 +454,7 @@ async function atualizarUsuario(id, camposAtualizados) {
 
 async function removerUsuario(id) {
   return executarQueryOuFallback(
-    ['removerUsuario', 'deletarUsuario', 'deleteUsuario'],
+    ['removerUsuario', 'deletarUsuario'],
     async (idAlvo) => {
       const idx = estadoMemoria.usuarios.findIndex((u) => String(u.id) === String(idAlvo));
       if (idx === -1) return false;
@@ -519,7 +471,7 @@ async function removerUsuario(id) {
 
 async function listarCategorias(apenasAtivas = false) {
   return executarQueryOuFallback(
-    ['listarCategorias', 'getCategorias', 'selectCategorias'],
+    ['listarCategorias', 'getCategorias'],
     async (somenteAtivas) => {
       let lista = [...estadoMemoria.categorias];
       if (somenteAtivas) {
@@ -546,7 +498,7 @@ async function buscarCategoriaPorId(id) {
 
 async function criarCategoria(dadosCategoria) {
   return executarQueryOuFallback(
-    ['criarCategoria', 'inserirCategoria', 'insertCategoria'],
+    ['criarCategoria', 'inserirCategoria'],
     async (dados) => {
       estadoMemoria.contadores.categorias += 1;
       const novaOrdem =
@@ -598,7 +550,7 @@ async function atualizarCategoria(id, campos) {
 
 async function removerCategoria(id) {
   return executarQueryOuFallback(
-    ['removerCategoria', 'deletarCategoria', 'deleteCategoria'],
+    ['deletarCategoria', 'removerCategoria'],
     async (idAlvo) => {
       const idx = estadoMemoria.categorias.findIndex((c) => String(c.id) === String(idAlvo));
       if (idx === -1) return false;
@@ -611,7 +563,7 @@ async function removerCategoria(id) {
 
 async function listarItensCardapio(filtros = {}) {
   return executarQueryOuFallback(
-    ['listarItensCardapio', 'listarProdutos', 'getItensCardapio', 'selectItensCardapio'],
+    ['listarItensCardapio', 'listarProdutos'],
     async ({ categoriaId, categoriaNome, incluirOcultos = false, busca } = {}) => {
       let itens = estadoMemoria.itensCardapio.map((i) => ({ ...i }));
 
@@ -647,7 +599,7 @@ async function listarItensCardapio(filtros = {}) {
 
 async function buscarItemCardapioPorId(id) {
   return executarQueryOuFallback(
-    ['buscarItemCardapioPorId', 'buscarProdutoPorId', 'getItemCardapioById'],
+    ['buscarItemCardapioPorId', 'buscarProdutoPorId'],
     async (idBusca) => {
       const item = estadoMemoria.itensCardapio.find((i) => String(i.id) === String(idBusca));
       return item ? { ...item } : null;
@@ -658,7 +610,7 @@ async function buscarItemCardapioPorId(id) {
 
 async function criarItemCardapio(dadosItem) {
   return executarQueryOuFallback(
-    ['criarItemCardapio', 'inserirItemCardapio', 'criarProduto', 'insertProduto'],
+    ['criarProduto', 'criarItemCardapio'],
     async (dados) => {
       estadoMemoria.contadores.itens += 1;
       const novo = {
@@ -681,7 +633,7 @@ async function criarItemCardapio(dadosItem) {
 
 async function atualizarItemCardapio(id, campos) {
   return executarQueryOuFallback(
-    ['atualizarItemCardapio', 'atualizarProduto', 'updateItemCardapio'],
+    ['atualizarProduto', 'atualizarItemCardapio'],
     async (idAlvo, novosCampos) => {
       const idx = estadoMemoria.itensCardapio.findIndex((i) => String(i.id) === String(idAlvo));
       if (idx === -1) return null;
@@ -702,7 +654,7 @@ async function atualizarItemCardapio(id, campos) {
 
 async function removerItemCardapio(id) {
   return executarQueryOuFallback(
-    ['removerItemCardapio', 'deletarItemCardapio', 'removerProduto', 'deleteProduto'],
+    ['deletarProduto', 'removerItemCardapio'],
     async (idAlvo) => {
       const idx = estadoMemoria.itensCardapio.findIndex((i) => String(i.id) === String(idAlvo));
       if (idx === -1) return false;
@@ -719,7 +671,7 @@ async function removerItemCardapio(id) {
 
 async function obterSacolaUsuario(usuarioId) {
   return executarQueryOuFallback(
-    ['obterSacolaUsuario', 'getSacolaByUsuarioId'],
+    ['obterSacolaUsuario'],
     async (uId) => {
       const chave = String(uId);
       return estadoMemoria.sacolas.get(chave) || [];
@@ -730,7 +682,7 @@ async function obterSacolaUsuario(usuarioId) {
 
 async function salvarSacolaUsuario(usuarioId, itensSacola) {
   return executarQueryOuFallback(
-    ['salvarSacolaUsuario', 'saveSacolaByUsuarioId'],
+    ['salvarSacolaUsuario'],
     async (uId, itens) => {
       const chave = String(uId);
       estadoMemoria.sacolas.set(chave, itens);
@@ -743,14 +695,14 @@ async function salvarSacolaUsuario(usuarioId, itensSacola) {
 
 async function obterProximoNumeroPedido() {
   return executarQueryOuFallback(
-    ['obterProximoNumeroPedido', 'getNextPedidoId'],
+    ['obterProximoNumeroPedido'],
     async () => estadoMemoria.contadores.pedidos + 1
   );
 }
 
 async function criarPedido(dadosPedido) {
   return executarQueryOuFallback(
-    ['criarPedido', 'inserirPedido', 'insertPedido'],
+    ['criarPedido', 'inserirPedido'],
     async (dados) => {
       estadoMemoria.contadores.pedidos += 1;
       const id = estadoMemoria.contadores.pedidos;
@@ -764,6 +716,7 @@ async function criarPedido(dadosPedido) {
         total: dados.total,
         unidade_retirada: dados.unidade_retirada || 'Shopping Beira Mar',
         previsao_minutos: dados.previsao_minutos || 5,
+        observacoes: dados.observacoes || null,
         status: dados.status || 'preparando',
         criado_em: new Date().toISOString(),
         finalizado_em: null,
@@ -777,7 +730,7 @@ async function criarPedido(dadosPedido) {
 
 async function buscarPedidoPorId(id) {
   return executarQueryOuFallback(
-    ['buscarPedidoPorId', 'getPedidoById', 'selectPedidoPorId'],
+    ['buscarPedidoPorId'],
     async (idBusca) => {
       const p = estadoMemoria.pedidos.find(
         (item) => String(item.id) === String(idBusca) || String(item.numero) === String(idBusca)
@@ -790,7 +743,7 @@ async function buscarPedidoPorId(id) {
 
 async function listarPedidos(filtros = {}) {
   return executarQueryOuFallback(
-    ['listarPedidos', 'getPedidos', 'selectPedidos'],
+    ['listarPedidos'],
     async ({ usuarioId, status, apenasEmAndamento, apenasHistorico } = {}) => {
       let lista = estadoMemoria.pedidos.map((p) => ({ ...p, itens: [...p.itens] }));
 
@@ -822,7 +775,7 @@ async function listarPedidos(filtros = {}) {
 
 async function atualizarPedido(id, campos) {
   return executarQueryOuFallback(
-    ['atualizarPedido', 'updatePedido', 'atualizarStatusPedido'],
+    ['atualizarPedido'],
     async (idAlvo, novosCampos) => {
       const idx = estadoMemoria.pedidos.findIndex(
         (p) => String(p.id) === String(idAlvo) || String(p.numero) === String(idAlvo)
@@ -843,11 +796,31 @@ async function atualizarPedido(id, campos) {
   );
 }
 
+async function removerPedido(id) {
+  return executarQueryOuFallback(
+    ['removerPedido'],
+    async (idAlvo) => {
+      const idx = estadoMemoria.pedidos.findIndex(
+        (p) => String(p.id) === String(idAlvo) || String(p.numero) === String(idAlvo)
+      );
+      if (idx === -1) return false;
+      estadoMemoria.pedidos.splice(idx, 1);
+      return true;
+    },
+    id
+  );
+}
+
 function verificarStatusBanco() {
-  const queriesAtivas = Boolean(carregarModuloQueries());
+  const conectado = estaConectadoAoPostgres();
   return {
-    modo: queriesAtivas ? 'database_queries_sql' : 'memoria_fallback_prototipo',
-    queriesConectadas: queriesAtivas,
+    sgbd: 'PostgreSQL',
+    banco: process.env.DB_NAME || 'cafeteria',
+    host: process.env.DB_HOST || 'localhost',
+    porta: Number(process.env.DB_PORT) || 5432,
+    modo: conectado ? 'postgresql_local_pgadmin' : 'memoria_fallback_prototipo',
+    postgresConectado: conectado,
+    avisoConexao: conectado ? null : obterUltimoErroPostgres(),
   };
 }
 
@@ -857,6 +830,7 @@ module.exports = {
   buscarUsuarioPorId,
   buscarUsuarioPorEmail,
   buscarUsuarioPorTelefone,
+  buscarUsuarioPorLogin,
   listarUsuarios,
   criarUsuario,
   atualizarUsuario,
@@ -881,4 +855,5 @@ module.exports = {
   buscarPedidoPorId,
   listarPedidos,
   atualizarPedido,
+  removerPedido,
 };
