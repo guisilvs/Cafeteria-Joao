@@ -1,8 +1,7 @@
 /**
  * @file app.js
  * @description Ponto de entrada do servidor Back-end da Cafeteria do João.
- * Inicializa o banco PostgreSQL (criando o banco, as tabelas e o usuário Admin automaticamente),
- * aplica os middlewares de segurança e inicia o Express na porta 3000.
+ * Serve as APIs REST (`/api/*`) e os arquivos do Front-end (`/home` -> cliente, `/admin` -> administrador).
  */
 
 const path = require('path');
@@ -23,30 +22,51 @@ const {
 
 const app = express();
 const PORTA = Number(process.env.PORT) || 3000;
+const CAMINHO_FRONTEND = path.resolve(__dirname, '../../frontend');
 
-// 1. Segurança HTTP e CORS para comunicação isolada com o Front-end
+// 1. Segurança HTTP e CORS
 app.use(criarMiddlewareHelmet());
 app.use(criarMiddlewareCors());
-app.use(limitadorGeralApi);
+app.use('/api', limitadorGeralApi);
 
 // 2. Parsers de corpo da requisição (suporta JSON e Base64 de imagens até 6MB)
 app.use(express.json({ limit: '6mb' }));
 app.use(express.urlencoded({ extended: true, limit: '6mb' }));
 
-// 3. Registro das rotas da API (disponíveis com prefixo `/api` e também na raiz `/`)
-app.use('/api', rotasApi);
-app.use('/', rotasApi);
+// 3. Rotas de Páginas do Front-end (Cliente em /home e Admin em /admin)
+app.get(['/', '/home', '/index.html'], (_req, res) => {
+  res.sendFile(path.join(CAMINHO_FRONTEND, 'index.html'));
+});
 
-// 4. Tratamento de rotas inexistentes (404) e erros globais
+app.get(['/admin', '/admin/', '/admin.html'], (_req, res) => {
+  res.sendFile(path.join(CAMINHO_FRONTEND, 'admin.html'));
+});
+
+// 4. Arquivos estáticos do Front-end (style.css, js/api.js, js/pagina.js, js/admin.js)
+app.use(express.static(CAMINHO_FRONTEND));
+
+// 5. Registro das rotas da API
+app.use('/api', rotasApi);
+
+// 6. Tratamento de rotas inexistentes (404) e erros globais
 app.use(rotaNaoEncontrada);
 app.use(tratadorDeErros);
 
-// 5. Inicializa o PostgreSQL (tabelas + Admin padrão) e sobe o servidor Express
+// 7. Inicializa o PostgreSQL e sobe o servidor nas portas 3000 e 80 (para localhost/home e localhost/admin)
 if (require.main === module) {
   inicializarBancoDeDados().finally(() => {
     app.listen(PORTA, () => {
-      console.log(`☕ Servidor Back-end da Cafeteria do João rodando em http://localhost:${PORTA}`);
+      console.log(`☕ Servidor rodando em http://localhost:${PORTA}/home (Cliente) e http://localhost:${PORTA}/admin (Admin)`);
     });
+
+    if (PORTA !== 80) {
+      const servidorPorta80 = app.listen(80, () => {
+        console.log(`🌐 Atalho porta 80 ativo: http://localhost/home (Cliente) e http://localhost/admin (Admin)`);
+      });
+      servidorPorta80.on('error', () => {
+        // Caso a porta 80 esteja ocupada pelo sistema operacional, mantém apenas a porta 3000 sem erro
+      });
+    }
   });
 }
 

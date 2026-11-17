@@ -1,49 +1,383 @@
 <!DOCTYPE html>
 <html lang="pt-BR">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Ratones Coffee</title>
-    <link rel="stylesheet" href="style.css">
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Cafeteria do João — Cardápio & Pedidos</title>
+  <link rel="stylesheet" href="/style.css" />
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css" />
+  <!-- Kit oficial Liquid Glass solicitado -->
+  <script type="module" src="https://liquidglass.dev/lib/components.js"></script>
 </head>
-<body>
+<body class="cliente-body">
+  <div id="toastContainer" class="toast-container"></div>
 
-    <div class="app-container">
-        
-        <header class="header">
-            <h1>Ratones Coffee</h1>
-            <div class="profile-pic">
-                <img src="https://via.placeholder.com/40" alt="Perfil do usuário">
+  <!-- Stage Principal com suporte a refração Liquid Glass -->
+  <div id="clienteStage" class="cliente-stage" data-lg-backdrop>
+    <!-- 1. Cabeçalho Superior -->
+    <header class="cliente-header">
+      <h1 id="tituloPagina">Cafeteria do João</h1>
+      <div class="header-actions">
+        <lg-button
+          id="btnLimparPedidoTopo"
+          class="liquid-glass btn-limpar-pedido"
+          style="display: none;"
+          onclick="window.AppCliente.limparSacola()"
+        >
+          Limpar pedido
+        </lg-button>
+
+        <button
+          id="btnAbrirConta"
+          class="liquid-glass btn-conta-perfil"
+          title="Minha Conta / Login"
+          onclick="window.AppCliente.abrirPainelConta()"
+        >
+          <i id="iconePerfilHeader" class="fa-solid fa-user icone-perfil-deslogado"></i>
+          <img id="fotoPerfilHeader" src="" alt="Foto de perfil" style="display: none;" />
+          <span id="badgePedidoEmAndamento" class="badge-pedido-ativo" style="display: none;"></span>
+        </button>
+      </div>
+    </header>
+
+    <!-- 2. Filtro Dinâmico de Categorias (Alimentado pelo Banco de Dados) -->
+    <nav id="barraCategorias" class="filtro-categorias" aria-label="Categorias do cardápio"></nav>
+
+    <!-- 3. Área Principal de Conteúdo (Cardápio, Favoritos, Sacola ou Pedido Realizado) -->
+    <main id="conteudoPrincipal" class="cliente-conteudo">
+      <!-- Seção A: Grade de Produtos (Cardápio e Favoritos) -->
+      <section id="secaoProdutos">
+        <div id="gradeProdutos" class="grade-produtos"></div>
+      </section>
+
+      <!-- Seção B: Sacola / Pedido Atual (Node 16:336 do Figma) -->
+      <section id="secaoSacola" style="display: none;">
+        <lg-panel id="cabecalhoSacolaCliente" class="sacola-cabecalho-cliente liquid-glass">
+          <div class="sacola-avatar liquid-glass">
+            <img id="sacolaFotoCliente" src="" alt="Cliente" style="display: none;" />
+            <i id="sacolaIconeCliente" class="fa-solid fa-user"></i>
+          </div>
+          <div class="sacola-info-cliente">
+            <p id="sacolaTextoPara">Para: Visitante</p>
+            <p id="sacolaTextoUnidade">Unidade: Shopping Beira Mar</p>
+            <p id="sacolaTextoNumeroPedido">Pedido: #52681</p>
+          </div>
+        </lg-panel>
+
+        <div id="listaItensSacola" class="lista-itens-sacola"></div>
+
+        <div id="rodapeSacola" class="sacola-rodape-fixo">
+          <span id="textoTotalSacola" class="sacola-total-texto">Total: R$ 0,00</span>
+          <button id="btnFazerPedido" class="btn-fazer-pedido" onclick="window.AppCliente.finalizarPedido()">
+            Fazer pedido
+          </button>
+        </div>
+      </section>
+
+      <!-- Seção C: Confirmação "Pedido Realizado" (Node 17:321 do Figma) -->
+      <section id="secaoPedidoRealizado" style="display: none;">
+        <div class="pedido-realizado-box">
+          <div class="icone-check-sucesso">
+            <i class="fa-solid fa-check"></i>
+          </div>
+          <h2>Pedido realizado</h2>
+          <p class="msg-preparo">
+            Estamos preparando seu pedido. Você pode acompanhar o progresso no seu perfil ou continuar navegando no nosso cardápio.
+          </p>
+
+          <div class="card-resumo-preparo">
+            <i class="fa-solid fa-mug-hot"></i>
+            <div>
+              <strong id="confirmacaoNumeroPedido" style="font-size: 16px; display: block;">#52681 Em preparo...</strong>
+              <span id="confirmacaoPrevisaoPedido" style="font-size: 14px; color: #444;">Previsão de retirada: 5 minutos</span>
             </div>
-        </header>
+          </div>
 
-        <nav class="category-tabs">
-            <button class="tab active">Gelados</button>
-            <button class="tab">Quentes</button>
-            <button class="tab">Sanduíches</button>
-        </nav>
+          <button class="liquid-glass btn-limpar-pedido" onclick="window.AppCliente.abrirPainelConta()">
+            Meus pedidos
+          </button>
+        </div>
+      </section>
+    </main>
 
-        <main class="products-grid">
-        </main>
+    <!-- 4. Barra de Navegação Inferior com Liquid Glass (<lg-panel>) -->
+    <div class="barra-navegacao-wrap">
+      <lg-panel class="nav-capsula-liquid liquid-glass">
+        <button
+          id="navBtnCardapio"
+          class="nav-botao ativo"
+          aria-current="page"
+          onclick="window.AppCliente.mudarAba('cardapio')"
+        >
+          <i class="fa-solid fa-mug-saucer"></i>
+          <span>Cardápio</span>
+        </button>
 
-        <nav class="bottom-nav">
-            <button class="nav-item active">
-                <div class="nav-icon-bg"><i class="fas fa-mug-hot"></i></div>
-                <span>Cardápio</span>
-            </button>
-            <button class="nav-item">
-                <i class="far fa-heart"></i>
-                <span>Favoritos</span>
-            </button>
-            <button class="nav-item">
-                <i class="fas fa-shopping-bag"></i>
-                <span>Pedido</span>
-            </button>
-        </nav>
+        <button
+          id="navBtnFavoritos"
+          class="nav-botao"
+          onclick="window.AppCliente.mudarAba('favoritos')"
+        >
+          <i class="fa-solid fa-heart"></i>
+          <span>Favoritos</span>
+        </button>
 
+        <button
+          id="navBtnPedido"
+          class="nav-botao"
+          onclick="window.AppCliente.mudarAba('pedido')"
+        >
+          <i class="fa-solid fa-bag-shopping"></i>
+          <span>Pedido</span>
+          <span id="badgeContadorSacola" class="badge-contador-sacola" style="display: none;">0</span>
+        </button>
+      </lg-panel>
     </div>
 
-    <script src="script.js"></script>
+    <!-- 5. Janela Modal / Bottom Sheet: Login, Criar Conta, Recuperar Senha e Minha Conta -->
+    <div id="sheetContaOverlay" class="sheet-overlay">
+      <div class="janela-minha-conta">
+        <!-- Sub-tela 5.1: Faça Login (Node 82:113) -->
+        <div id="subtelaLogin" style="display: none;">
+          <h2 class="janela-titulo">Faça login</h2>
+          <div class="circulo-perfil-grande liquid-glass">
+            <i class="fa-solid fa-user"></i>
+          </div>
+          <p class="slogan-login">Faça pedidos, favorite o cardápio e muito mais!</p>
+
+          <form id="formLoginCliente" onsubmit="window.AppCliente.submeterLogin(event)">
+            <div class="grupo-inputs-sheet">
+              <input
+                id="inputLoginIdentificador"
+                type="text"
+                class="input-sheet"
+                placeholder="E-mail ou telefone"
+                required
+              />
+              <input
+                id="inputLoginSenha"
+                type="password"
+                class="input-sheet"
+                placeholder="Senha"
+                required
+              />
+            </div>
+
+            <button
+              type="button"
+              class="link-esqueceu-senha"
+              onclick="window.AppCliente.mostrarSubtelaConta('recuperar')"
+            >
+              Esqueceu sua senha?
+            </button>
+
+            <div class="botoes-auth-row">
+              <button
+                type="button"
+                class="btn-secundario-pill"
+                onclick="window.AppCliente.mostrarSubtelaConta('cadastro')"
+              >
+                Criar conta
+              </button>
+              <button type="submit" class="btn-primario-marrom">Entrar</button>
+            </div>
+          </form>
+
+          <div class="sheet-botoes-inferiores">
+            <button
+              type="button"
+              class="liquid-glass btn-sheet-inferior"
+              onclick="window.AppCliente.fecharPainelConta()"
+            >
+              ✕ Voltar
+            </button>
+          </div>
+        </div>
+
+        <!-- Sub-tela 5.2: Criar Conta (Node 87:216) -->
+        <div id="subtelaCadastro" style="display: none;">
+          <h2 class="janela-titulo">Criar conta</h2>
+
+          <form id="formCadastroCliente" onsubmit="window.AppCliente.submeterCadastro(event)">
+            <div class="upload-perfil-row">
+              <label for="inputFotoCadastro" class="circulo-perfil-grande liquid-glass" title="Escolher foto">
+                <i id="iconePreviewCadastro" class="fa-solid fa-camera"></i>
+                <img id="imgPreviewCadastro" src="" alt="Preview" style="display: none;" />
+              </label>
+              <input
+                id="inputFotoCadastro"
+                type="file"
+                accept="image/*"
+                style="display: none;"
+                onchange="window.AppCliente.previsualizarFotoCadastro(event)"
+              />
+              <span class="upload-perfil-texto">Faça upload da sua foto de perfil</span>
+            </div>
+
+            <div class="grupo-inputs-sheet">
+              <input
+                id="inputCadastroNome"
+                type="text"
+                class="input-sheet"
+                placeholder="Nome completo"
+                required
+              />
+              <input
+                id="inputCadastroEmail"
+                type="email"
+                class="input-sheet"
+                placeholder="E-mail"
+                required
+              />
+              <input
+                id="inputCadastroTelefone"
+                type="tel"
+                class="input-sheet"
+                placeholder="Telefone (com DDD)"
+                required
+              />
+              <input
+                id="inputCadastroSenha"
+                type="password"
+                class="input-sheet"
+                placeholder="Senha (mín. 6 caracteres)"
+                required
+              />
+              <input
+                id="inputCadastroConfirmarSenha"
+                type="password"
+                class="input-sheet"
+                placeholder="Confirmar a senha"
+                required
+              />
+            </div>
+
+            <div class="botoes-auth-row" style="margin-top: 18px;">
+              <button
+                type="button"
+                class="btn-secundario-pill"
+                onclick="window.AppCliente.mostrarSubtelaConta('login')"
+              >
+                Já tenho conta
+              </button>
+              <button type="submit" class="btn-primario-marrom">Criar conta</button>
+            </div>
+          </form>
+
+          <div class="sheet-botoes-inferiores">
+            <button
+              type="button"
+              class="liquid-glass btn-sheet-inferior"
+              onclick="window.AppCliente.fecharPainelConta()"
+            >
+              ✕ Voltar
+            </button>
+          </div>
+        </div>
+
+        <!-- Sub-tela 5.3: Recuperar Senha ("Esqueceu sua senha?") -->
+        <div id="subtelaRecuperar" style="display: none;">
+          <h2 class="janela-titulo">Recuperar senha</h2>
+          <p class="slogan-login" style="font-size: 14px;">
+            Confirme seu e-mail e telefone cadastrados para definir uma nova senha.
+          </p>
+
+          <form id="formRecuperarSenha" onsubmit="window.AppCliente.submeterRecuperacaoSenha(event)">
+            <div class="grupo-inputs-sheet">
+              <input
+                id="inputRecEmail"
+                type="email"
+                class="input-sheet"
+                placeholder="Seu e-mail cadastrado"
+                required
+              />
+              <input
+                id="inputRecTelefone"
+                type="tel"
+                class="input-sheet"
+                placeholder="Seu telefone cadastrado"
+                required
+              />
+              <input
+                id="inputRecNovaSenha"
+                type="password"
+                class="input-sheet"
+                placeholder="Nova senha (mín. 6 caracteres)"
+                required
+              />
+              <input
+                id="inputRecConfirmarSenha"
+                type="password"
+                class="input-sheet"
+                placeholder="Confirmar nova senha"
+                required
+              />
+            </div>
+
+            <div class="botoes-auth-row" style="margin-top: 16px;">
+              <button
+                type="button"
+                class="btn-secundario-pill"
+                onclick="window.AppCliente.mostrarSubtelaConta('login')"
+              >
+                Voltar ao login
+              </button>
+              <button type="submit" class="btn-primario-marrom">Redefinir</button>
+            </div>
+          </form>
+        </div>
+
+        <!-- Sub-tela 5.4: Minha Conta + Pedidos em Andamento + Histórico (Node 17:222) -->
+        <div id="subtelaMinhaConta" style="display: none;">
+          <h2 class="janela-titulo">Minha conta</h2>
+
+          <div class="minha-conta-topo">
+            <label for="inputTrocarFotoPerfil" style="cursor: pointer;" title="Clique para alterar sua foto">
+              <img id="minhaContaFoto" src="" alt="Foto de perfil" />
+            </label>
+            <input
+              id="inputTrocarFotoPerfil"
+              type="file"
+              accept="image/*"
+              style="display: none;"
+              onchange="window.AppCliente.atualizarFotoPerfilLogado(event)"
+            />
+            <div class="minha-conta-saudacao">
+              <span>Olá,</span>
+              <strong id="minhaContaNome">Cliente</strong>
+            </div>
+          </div>
+
+          <h3 class="subtitulo-meus-pedidos">Meus pedidos</h3>
+
+          <!-- Lista de Pedidos em Andamento (Preparando) -->
+          <div id="containerPedidosAndamento"></div>
+
+          <!-- Lista de Histórico de Pedidos (Finalizados / Retirados) -->
+          <div id="containerPedidosHistorico"></div>
+
+          <div class="sheet-botoes-inferiores">
+            <button
+              type="button"
+              class="liquid-glass btn-sheet-inferior"
+              onclick="window.AppCliente.fecharPainelConta()"
+            >
+              ✕ Voltar
+            </button>
+            <button
+              type="button"
+              class="liquid-glass btn-sheet-inferior"
+              onclick="window.AppCliente.fazerLogoff()"
+            >
+              Fazer Logoff
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="/js/api.js"></script>
+  <script src="/js/pagina.js"></script>
 </body>
 </html>

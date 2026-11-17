@@ -1,0 +1,579 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Cafeteria do João — Painel Administrador</title>
+  <link rel="stylesheet" href="/style.css" />
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css" />
+</head>
+<body class="admin-body">
+  <div id="toastContainer" class="toast-container"></div>
+
+  <!-- ========================================================================
+       1. TELA DE LOGIN DO ADMINISTRADOR (Node 143:145 do Figma)
+       ======================================================================== -->
+  <section id="telaAdminLogin" class="admin-login-screen">
+    <div class="admin-login-box">
+      <div class="admin-logo-bloco">
+        <i class="fa-solid fa-mug-hot"></i>
+        <h1>Cafeteria do João</h1>
+      </div>
+
+      <form id="formLoginAdmin" onsubmit="window.AppAdmin.submeterLoginAdmin(event)">
+        <div class="admin-login-inputs">
+          <input
+            id="inputAdminIdentificador"
+            type="text"
+            class="admin-input-grande"
+            placeholder="Login (ex: Admin), E-mail ou telefone"
+            required
+          />
+          <input
+            id="inputAdminSenha"
+            type="password"
+            class="admin-input-grande"
+            placeholder="Senha"
+            required
+          />
+        </div>
+
+        <div style="display: flex; justify-content: center;">
+          <button
+            type="submit"
+            class="btn-primario-marrom"
+            style="width: 140px; height: 50px; font-size: 14px;"
+          >
+            Entrar
+          </button>
+        </div>
+      </form>
+    </div>
+
+    <i class="fa-solid fa-seedling admin-marca-dagua" aria-hidden="true"></i>
+  </section>
+
+  <!-- ========================================================================
+       2. PAINEL ADMINISTRATIVO COMPLETO (Nodes 143:146, 143:148, 143:999, 161:294, 143:150, 143:838)
+       ======================================================================== -->
+  <div id="painelAdminLayout" class="admin-layout" style="display: none;">
+    <!-- Barra Lateral Expansível (#472e00) -->
+    <aside id="adminSidebar" class="admin-sidebar">
+      <div class="sidebar-topo" onclick="window.AppAdmin.navegarPara('opcoes')" title="Início do Painel">
+        <i class="fa-solid fa-mug-hot"></i>
+        <span class="sidebar-titulo-loja">Cafeteria do João</span>
+      </div>
+
+      <nav class="sidebar-menu" aria-label="Menu do Administrador">
+        <button
+          id="menuBtnPedidos"
+          class="sidebar-item"
+          onclick="window.AppAdmin.navegarPara('pedidos')"
+          title="Pedidos"
+        >
+          <i class="fa-solid fa-bell"></i>
+          <span class="label-menu">Pedidos</span>
+          <span id="sidebarBadgePedidos" class="sidebar-badge-alerta" style="display: none;"></span>
+        </button>
+
+        <button
+          id="menuBtnCardapio"
+          class="sidebar-item"
+          onclick="window.AppAdmin.navegarPara('categorias')"
+          title="Cardápio"
+        >
+          <i class="fa-solid fa-book-open"></i>
+          <span class="label-menu">Cardápio</span>
+        </button>
+
+        <button
+          id="menuBtnUsuarios"
+          class="sidebar-item"
+          onclick="window.AppAdmin.navegarPara('usuarios')"
+          title="Usuários"
+        >
+          <i class="fa-solid fa-users"></i>
+          <span class="label-menu">Usuários</span>
+        </button>
+      </nav>
+
+      <div class="sidebar-rodape">
+        <button
+          type="button"
+          class="btn-toggle-sidebar"
+          title="Expandir / Recolher Barra Lateral"
+          onclick="window.AppAdmin.alternarSidebar()"
+        >
+          <i id="iconeToggleSidebar" class="fa-solid fa-angles-right"></i>
+        </button>
+      </div>
+    </aside>
+
+    <!-- Área Principal -->
+    <main class="admin-main">
+      <!-- Barra Superior com Títulos e Operador Logado -->
+      <header class="admin-topbar">
+        <div class="admin-titulos">
+          <h1 id="adminTituloPrincipal">Painel Administrativo</h1>
+          <h2 id="adminSubtituloPrincipal">Visão Geral</h2>
+        </div>
+
+        <div class="admin-operador-box">
+          <div class="admin-operador-texto">
+            <span id="operadorCargoTexto">Operador</span>
+            <strong id="operadorNomeTexto">Admin</strong>
+          </div>
+          <button
+            type="button"
+            class="btn-icone-topo"
+            title="Alterar minha senha"
+            onclick="window.AppAdmin.abrirModalTrocarSenha()"
+          >
+            <i class="fa-solid fa-key"></i>
+          </button>
+          <button
+            type="button"
+            class="btn-icone-topo"
+            title="Sair / Logout"
+            onclick="window.AppAdmin.fazerLogoutAdmin()"
+          >
+            <i class="fa-solid fa-right-from-bracket"></i>
+          </button>
+        </div>
+      </header>
+
+      <!-- Banner de recomendação de troca da senha inicial (Admin / 123456) -->
+      <div id="bannerTrocaSenhaPadrao" class="banner-troca-senha" style="display: none;">
+        <div>
+          <strong>🔐 Segurança:</strong> Você está utilizando a senha inicial padrão (<code>123456</code>). Recomendamos modificá-la agora.
+        </div>
+        <button
+          type="button"
+          class="btn-primario-marrom"
+          style="height: 38px; padding: 0 18px;"
+          onclick="window.AppAdmin.abrirModalTrocarSenha()"
+        >
+          Modificar senha
+        </button>
+      </div>
+
+      <!-- ====================================================================
+           VISÃO 2.1: OPÇÕES / RESUMO INICIAL (Node 143:146)
+           ==================================================================== -->
+      <section id="visaoOpcoes" style="display: none;">
+        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 22px; margin-bottom: 36px;">
+          <div class="card-pedido-admin" style="width: 100%; min-height: 150px; cursor: pointer;" onclick="window.AppAdmin.navegarPara('pedidos')">
+            <div>
+              <span style="font-size: 14px; color: #555;">Pedidos Pendentes</span>
+              <h3 id="resumoPedidosPendentes" style="font-size: 38px; font-weight: 800; margin-top: 6px;">0</h3>
+            </div>
+            <span style="font-size: 13px; font-weight: 700; color: var(--coffee-primary);">Gerenciar pedidos →</span>
+          </div>
+
+          <div class="card-pedido-admin" style="width: 100%; min-height: 150px; cursor: pointer;" onclick="window.AppAdmin.navegarPara('categorias')">
+            <div>
+              <span style="font-size: 14px; color: #555;">Categorias & Produtos</span>
+              <h3 id="resumoCardapioTotal" style="font-size: 38px; font-weight: 800; margin-top: 6px;">0</h3>
+            </div>
+            <span style="font-size: 13px; font-weight: 700; color: var(--coffee-primary);">Gerenciar cardápio →</span>
+          </div>
+
+          <div class="card-pedido-admin" style="width: 100%; min-height: 150px; cursor: pointer;" onclick="window.AppAdmin.navegarPara('usuarios')">
+            <div>
+              <span style="font-size: 14px; color: #555;">Usuários Cadastrados</span>
+              <h3 id="resumoUsuariosTotal" style="font-size: 38px; font-weight: 800; margin-top: 6px;">0</h3>
+            </div>
+            <span style="font-size: 13px; font-weight: 700; color: var(--coffee-primary);">Gerenciar usuários →</span>
+          </div>
+        </div>
+      </section>
+
+      <!-- ====================================================================
+           VISÃO 2.2: PEDIDOS PENDENTES E CONCLUÍDOS (Node 143:150)
+           ==================================================================== -->
+      <section id="visaoPedidos" style="display: none;">
+        <div class="secao-pedidos-admin">
+          <div id="gradePedidosPendentes" class="grade-pedidos-admin"></div>
+        </div>
+
+        <div class="secao-pedidos-admin">
+          <h3>Concluídos</h3>
+          <div id="gradePedidosConcluidos" class="grade-pedidos-admin"></div>
+        </div>
+      </section>
+
+      <!-- ====================================================================
+           VISÃO 2.3: CARDÁPIO - CATEGORIAS (Node 143:148)
+           ==================================================================== -->
+      <section id="visaoCategorias" style="display: none;">
+        <div id="listaCategoriasAdmin" class="lista-barras-admin"></div>
+
+        <button
+          type="button"
+          class="btn-largo-inferior"
+          onclick="window.AppAdmin.abrirModalCategoria()"
+        >
+          Criar nova categoria
+        </button>
+      </section>
+
+      <!-- ====================================================================
+           VISÃO 2.4: CARDÁPIO - ITENS DE UMA CATEGORIA (Node 143:999)
+           ==================================================================== -->
+      <section id="visaoItensCategoria" style="display: none;">
+        <div style="margin-bottom: 22px; display: flex; align-items: center; gap: 12px;">
+          <button
+            type="button"
+            class="btn-secundario-pill"
+            onclick="window.AppAdmin.navegarPara('categorias')"
+          >
+            ← Voltar para Categorias
+          </button>
+        </div>
+
+        <div id="gradeItensCategoriaAdmin" class="grade-produtos-admin"></div>
+
+        <button
+          type="button"
+          class="btn-largo-inferior"
+          onclick="window.AppAdmin.abrirEditorProduto()"
+        >
+          Criar novo produto
+        </button>
+      </section>
+
+      <!-- ====================================================================
+           VISÃO 2.5: CRIAR / EDITAR PRODUTO + PRÉ-VISUALIZAÇÃO (Node 161:294)
+           ==================================================================== -->
+      <section id="visaoEditorProduto" style="display: none;">
+        <form id="formEditorProduto" onsubmit="window.AppAdmin.salvarProduto(event)">
+          <div class="editor-produto-grid">
+            <!-- Coluna 1: Upload da Foto .webp -->
+            <label for="inputFotoProdutoAdmin" class="box-upload-foto-produto" title="Escolher imagem do produto">
+              <i id="iconeUploadProduto" class="fa-solid fa-camera"></i>
+              <span id="textoUploadProduto">Toque para adicionar uma foto</span>
+              <img id="imgUploadProdutoPreview" src="" alt="Foto do produto" style="display: none;" />
+            </label>
+            <input
+              id="inputFotoProdutoAdmin"
+              type="file"
+              accept="image/*"
+              style="display: none;"
+              onchange="window.AppAdmin.aoSelecionarFotoProduto(event)"
+            />
+
+            <!-- Coluna 2: Campos do Produto -->
+            <div class="form-campos-produto">
+              <div>
+                <label for="inputProdutoCategoria">Categoria do produto</label>
+                <select
+                  id="inputProdutoCategoria"
+                  class="input-borda-preta"
+                  required
+                  onchange="window.AppAdmin.atualizarPreviewProduto()"
+                ></select>
+              </div>
+
+              <div>
+                <label for="inputProdutoNome">Nome do produto</label>
+                <input
+                  id="inputProdutoNome"
+                  type="text"
+                  class="input-borda-preta"
+                  placeholder="Digite aqui"
+                  required
+                  oninput="window.AppAdmin.atualizarPreviewProduto()"
+                />
+              </div>
+
+              <div>
+                <label for="inputProdutoDescricao">Descrição</label>
+                <textarea
+                  id="inputProdutoDescricao"
+                  class="textarea-borda-preta"
+                  placeholder="Descreva os ingredientes e detalhes do produto..."
+                  oninput="window.AppAdmin.atualizarPreviewProduto()"
+                ></textarea>
+              </div>
+
+              <div style="max-width: 222px;">
+                <label for="inputProdutoPreco">Preço (R$)</label>
+                <input
+                  id="inputProdutoPreco"
+                  type="text"
+                  class="input-borda-preta"
+                  placeholder="R$ 12,90"
+                  required
+                  oninput="window.AppAdmin.atualizarPreviewProduto()"
+                />
+              </div>
+            </div>
+
+            <!-- Botão Cancelar (X) -->
+            <button
+              type="button"
+              class="btn-acao-icone"
+              style="font-size: 32px; font-weight: 700;"
+              title="Cancelar e voltar"
+              onclick="window.AppAdmin.fecharEditorProduto()"
+            >
+              X
+            </button>
+
+            <div class="divisor-vertical-preview"></div>
+
+            <!-- Coluna 3: Pré-visualização ao Vivo (Node 166:250) -->
+            <div class="coluna-preview-produto">
+              <h3>Pré-visualização</h3>
+              <div class="preview-card-cliente">
+                <article class="card-produto">
+                  <div class="card-produto-img-wrap">
+                    <img id="previewCardImg" src="" alt="Preview" />
+                    <button type="button" class="btn-favorito-card" tabindex="-1">
+                      <i class="fa-regular fa-heart"></i>
+                    </button>
+                  </div>
+                  <h3 id="previewCardNome" class="card-produto-titulo" style="font-size: 17px;">Nome do Produto</h3>
+                  <p id="previewCardDesc" class="card-produto-desc" style="font-size: 12px; min-height: 48px;">
+                    Descrição do produto aparecerá aqui conforme você digita.
+                  </p>
+                  <button type="button" class="btn-adicionar-pedido" style="height: 46px; border-radius: 34px;" tabindex="-1">
+                    <span class="btn-adicionar-esquerda">
+                      <i class="fa-solid fa-bag-shopping"></i>
+                      <span class="btn-adicionar-texto" style="font-size: 11px;">Adicionar<br/>ao pedido</span>
+                    </span>
+                    <span id="previewCardPreco" class="btn-adicionar-preco" style="font-size: 12px;">R$ 0,00</span>
+                  </button>
+                </article>
+              </div>
+            </div>
+          </div>
+
+          <button type="submit" id="btnSalvarProdutoForm" class="btn-largo-inferior">
+            Publicar no cardápio
+          </button>
+        </form>
+      </section>
+
+      <!-- ====================================================================
+           VISÃO 2.6: USUÁRIOS INTERNOS E CLIENTES (Node 143:838)
+           ==================================================================== -->
+      <section id="visaoUsuarios" style="display: none;">
+        <!-- Filtro de busca e ordenação -->
+        <div style="display: flex; gap: 12px; max-width: 1158px; margin-bottom: 14px; flex-wrap: wrap;">
+          <input
+            id="inputBuscaUsuarioAdmin"
+            type="text"
+            class="input-borda-preta"
+            style="max-width: 340px; height: 40px;"
+            placeholder="Buscar por nome, login, e-mail ou cargo..."
+            oninput="window.AppAdmin.carregarUsuariosAdmin()"
+          />
+          <select
+            id="selectOrdenarUsuarios"
+            class="input-borda-preta"
+            style="max-width: 220px; height: 40px;"
+            onchange="window.AppAdmin.carregarUsuariosAdmin()"
+          >
+            <option value="">Ordenar: Padrão</option>
+            <option value="nome">Ordenar: Nome (A-Z)</option>
+            <option value="ultimo_acesso">Ordenar: Último acesso</option>
+          </select>
+        </div>
+
+        <!-- Seção Interno (Funcionários e Admins) -->
+        <div class="cabecalho-secao-usuarios">
+          <h3>Interno</h3>
+          <div class="acoes-secao-usuarios">
+            <i class="fa-solid fa-filter" title="Filtro"></i>
+            <button
+              type="button"
+              class="btn-criar-novo-cinza"
+              onclick="window.AppAdmin.abrirModalUsuario('funcionario')"
+            >
+              Criar novo
+            </button>
+          </div>
+        </div>
+        <div id="listaUsuariosInternos" class="lista-barras-admin"></div>
+
+        <!-- Seção Cliente -->
+        <div class="cabecalho-secao-usuarios">
+          <h3>Cliente</h3>
+          <div class="acoes-secao-usuarios">
+            <i class="fa-solid fa-filter" title="Filtro"></i>
+            <button
+              type="button"
+              class="btn-criar-novo-cinza"
+              onclick="window.AppAdmin.abrirModalUsuario('cliente')"
+            >
+              Criar novo
+            </button>
+          </div>
+        </div>
+        <div id="listaUsuariosClientes" class="lista-barras-admin"></div>
+      </section>
+    </main>
+  </div>
+
+  <!-- ========================================================================
+       MODAIS AUXILIARES DO PAINEL ADMIN
+       ======================================================================== -->
+
+  <!-- Modal 1: Criar / Editar Categoria -->
+  <div id="modalCategoria" class="modal-admin-overlay">
+    <div class="modal-admin-card">
+      <h3 id="tituloModalCategoria">Nova Categoria</h3>
+      <form onsubmit="window.AppAdmin.salvarCategoriaModal(event)">
+        <div style="display: flex; flex-direction: column; gap: 14px;">
+          <div>
+            <label style="font-size: 13px; font-weight: 600;">Nome da Categoria</label>
+            <input id="inputModalCategoriaNome" type="text" class="input-borda-preta" required />
+          </div>
+          <div>
+            <label style="font-size: 13px; font-weight: 600;">Ordem de Exibição</label>
+            <input id="inputModalCategoriaOrdem" type="number" min="1" class="input-borda-preta" />
+          </div>
+        </div>
+        <div style="display: flex; justify-content: flex-end; gap: 10px; margin-top: 22px;">
+          <button type="button" class="btn-secundario-pill" onclick="window.AppAdmin.fecharModais()">Cancelar</button>
+          <button type="submit" class="btn-primario-marrom">Salvar</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Modal 2: Criar / Editar Usuário (Cliente, Funcionário ou Admin) -->
+  <div id="modalUsuario" class="modal-admin-overlay">
+    <div class="modal-admin-card">
+      <h3 id="tituloModalUsuario">Usuário</h3>
+      <form onsubmit="window.AppAdmin.salvarUsuarioModal(event)">
+        <div style="display: flex; flex-direction: column; gap: 12px;">
+          <div>
+            <label style="font-size: 13px; font-weight: 600;">Nome Completo</label>
+            <input id="inputModalUsuarioNome" type="text" class="input-borda-preta" required />
+          </div>
+          <div>
+            <label style="font-size: 13px; font-weight: 600;">Login (opcional, ex: Admin)</label>
+            <input id="inputModalUsuarioLogin" type="text" class="input-borda-preta" />
+          </div>
+          <div>
+            <label style="font-size: 13px; font-weight: 600;">E-mail</label>
+            <input id="inputModalUsuarioEmail" type="email" class="input-borda-preta" required />
+          </div>
+          <div>
+            <label style="font-size: 13px; font-weight: 600;">Telefone</label>
+            <input id="inputModalUsuarioTelefone" type="text" class="input-borda-preta" />
+          </div>
+          <div>
+            <label style="font-size: 13px; font-weight: 600;">Perfil / Tipo</label>
+            <select id="inputModalUsuarioTipo" class="input-borda-preta">
+              <option value="cliente">Cliente</option>
+              <option value="funcionario">Funcionário (Interno)</option>
+              <option value="admin">Administrador (Operador)</option>
+            </select>
+          </div>
+          <div>
+            <label style="font-size: 13px; font-weight: 600;">Cargo / Setor (para internos)</label>
+            <input id="inputModalUsuarioCargo" type="text" class="input-borda-preta" placeholder="Ex: Atendimento, Barista, Operador" />
+          </div>
+          <div>
+            <label style="font-size: 13px; font-weight: 600;">Senha (deixe em branco para manter a atual)</label>
+            <input id="inputModalUsuarioSenha" type="password" class="input-borda-preta" placeholder="Mínimo 6 caracteres" />
+          </div>
+        </div>
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 22px;">
+          <button
+            type="button"
+            id="btnExcluirUsuarioModal"
+            class="btn-pill-status cancelar"
+            style="height: 40px; display: none;"
+            onclick="window.AppAdmin.excluirUsuarioModal()"
+          >
+            Excluir usuário
+          </button>
+          <div style="display: flex; gap: 10px; margin-left: auto;">
+            <button type="button" class="btn-secundario-pill" onclick="window.AppAdmin.fecharModais()">Cancelar</button>
+            <button type="submit" class="btn-primario-marrom">Salvar</button>
+          </div>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Modal 3: Modificar Pedido pelo Admin -->
+  <div id="modalPedidoAdmin" class="modal-admin-overlay">
+    <div class="modal-admin-card">
+      <h3 id="tituloModalPedido">Modificar Pedido</h3>
+      <form onsubmit="window.AppAdmin.salvarModificacaoPedido(event)">
+        <div style="display: flex; flex-direction: column; gap: 12px;">
+          <div>
+            <label style="font-size: 13px; font-weight: 600;">Unidade de Retirada</label>
+            <input id="inputModalPedidoUnidade" type="text" class="input-borda-preta" required />
+          </div>
+          <div>
+            <label style="font-size: 13px; font-weight: 600;">Previsão de Retirada (minutos)</label>
+            <input id="inputModalPedidoPrevisao" type="number" min="1" max="240" class="input-borda-preta" required />
+          </div>
+          <div>
+            <label style="font-size: 13px; font-weight: 600;">Status do Pedido</label>
+            <select id="inputModalPedidoStatus" class="input-borda-preta">
+              <option value="preparando">Preparando (Pendente)</option>
+              <option value="concluido">Concluído (Finalizado)</option>
+              <option value="cancelado">Cancelado</option>
+            </select>
+          </div>
+          <div>
+            <label style="font-size: 13px; font-weight: 600;">Observações</label>
+            <input id="inputModalPedidoObs" type="text" class="input-borda-preta" placeholder="Observações do pedido..." />
+          </div>
+        </div>
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 22px;">
+          <button
+            type="button"
+            class="btn-pill-status cancelar"
+            style="height: 40px;"
+            onclick="window.AppAdmin.excluirPedidoModal()"
+          >
+            Excluir pedido
+          </button>
+          <div style="display: flex; gap: 10px;">
+            <button type="button" class="btn-secundario-pill" onclick="window.AppAdmin.fecharModais()">Cancelar</button>
+            <button type="submit" class="btn-primario-marrom">Salvar alterações</button>
+          </div>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Modal 4: Alterar Senha do Administrador Logado -->
+  <div id="modalTrocarSenha" class="modal-admin-overlay">
+    <div class="modal-admin-card">
+      <h3>Alterar Minha Senha</h3>
+      <form onsubmit="window.AppAdmin.submeterTrocaSenha(event)">
+        <div style="display: flex; flex-direction: column; gap: 12px;">
+          <div>
+            <label style="font-size: 13px; font-weight: 600;">Senha Atual</label>
+            <input id="inputTrocaSenhaAtual" type="password" class="input-borda-preta" required />
+          </div>
+          <div>
+            <label style="font-size: 13px; font-weight: 600;">Nova Senha (mín. 6 caracteres)</label>
+            <input id="inputTrocaSenhaNova" type="password" class="input-borda-preta" required />
+          </div>
+          <div>
+            <label style="font-size: 13px; font-weight: 600;">Confirmar Nova Senha</label>
+            <input id="inputTrocaSenhaConfirmar" type="password" class="input-borda-preta" required />
+          </div>
+        </div>
+        <div style="display: flex; justify-content: flex-end; gap: 10px; margin-top: 22px;">
+          <button type="button" class="btn-secundario-pill" onclick="window.AppAdmin.fecharModais()">Cancelar</button>
+          <button type="submit" class="btn-primario-marrom">Atualizar Senha</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <script src="/js/api.js"></script>
+  <script src="/js/admin.js"></script>
+</body>
+</html>

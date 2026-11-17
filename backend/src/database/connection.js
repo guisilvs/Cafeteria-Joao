@@ -13,6 +13,18 @@ const pool = require('../db');
 let bancoConectado = false;
 let ultimoErroConexao = null;
 
+function carregarFotosIniciaisWebp() {
+  try {
+    const caminho = path.resolve(__dirname, 'fotosIniciaisWebp.json');
+    if (fs.existsSync(caminho)) {
+      return JSON.parse(fs.readFileSync(caminho, 'utf-8'));
+    }
+  } catch {
+    // Ignora caso o arquivo de cache não exista
+  }
+  return { produtos: {}, perfil: null };
+}
+
 /**
  * Caso o banco de dados configurado em `DB_NAME` (ex: `cafeteria`) ainda não tenha sido
  * criado manualmente no pgAdmin, conecta no banco padrão `postgres` e o cria automaticamente.
@@ -40,15 +52,13 @@ async function garantirDatabaseExistente() {
 }
 
 /**
- * Executa o `schema.sql` e aplica migrações não-destrutivas (`ADD COLUMN IF NOT EXISTS`)
- * caso as tabelas `Categoria` ou `Produto` já tenham sido criadas antes pelo colega no pgAdmin.
+ * Executa o `schema.sql` e aplica migrações não-destrutivas (`ADD COLUMN IF NOT EXISTS`).
  */
 async function garantirTabelasEColunas() {
   const caminhoSchema = path.resolve(__dirname, 'schema.sql');
   const sqlSchema = fs.readFileSync(caminhoSchema, 'utf-8');
   await pool.query(sqlSchema);
 
-  // Migrações seguras caso Categoria ou Produto já existissem com menos colunas:
   await pool.query(`
     ALTER TABLE Categoria ADD COLUMN IF NOT EXISTS slug VARCHAR(100);
     ALTER TABLE Categoria ADD COLUMN IF NOT EXISTS ordem INTEGER NOT NULL DEFAULT 1;
@@ -79,15 +89,16 @@ async function garantirTabelasEColunas() {
 }
 
 /**
- * Garante a existência do usuário Administrador padrão (`Admin` / `123456`, com `precisa_trocar_senha = true`)
- * e das categorias/produtos iniciais caso o banco esteja vazio.
+ * Garante a existência do usuário Administrador padrão (`Admin` / `123456`)
+ * e das categorias/produtos iniciais com fotos `.webp` caso o banco esteja vazio.
  */
 async function garantirDadosIniciais() {
   const saltRounds = Number(process.env.BCRYPT_SALT_ROUNDS) || 10;
+  const fotosIniciais = carregarFotosIniciaisWebp();
 
   // 1. Verifica se já existe algum administrador ou usuário "Admin"
   const adminCheck = await pool.query(
-    `SELECT id FROM Usuario WHERE LOWER( COALESCE(login, '') ) = 'admin' OR LOWER(nome) = 'admin' OR tipo = 'admin' LIMIT 1`
+    `SELECT id FROM Usuario WHERE LOWER(COALESCE(login, '')) = 'admin' OR LOWER(nome) = 'admin' OR tipo = 'admin' LIMIT 1`
   );
 
   if (adminCheck.rowCount === 0) {
@@ -96,12 +107,23 @@ async function garantirDadosIniciais() {
     const senhaHash = await bcrypt.hash(senhaPadrao, saltRounds);
 
     await pool.query(
-      `INSERT INTO Usuario (login, nome, email, telefone, senha_hash, tipo, cargo, ativo, precisa_trocar_senha, favoritos)
-       VALUES ($1, $2, $3, $4, $5, 'admin', 'Administrador', TRUE, TRUE, '[]'::jsonb)`,
-      [loginPadrao, 'Admin', 'admin@cafeteriajoao.com', '48999990000', senhaHash]
+      `INSERT INTO Usuario (login, nome, email, telefone, senha_hash, tipo, cargo, foto_webp, ativo, precisa_trocar_senha, favoritos)
+       VALUES ($1, $2, $3, $4, $5, 'admin', 'Administrador', $6, TRUE, TRUE, '[]'::jsonb)`,
+      [loginPadrao, 'Admin', 'admin@cafeteriajoao.com', '48999990000', senhaHash, fotosIniciais.perfil]
     );
     console.log(
-      `🔐 [PostgreSQL] Usuário administrador padrão criado -> Login: "${loginPadrao}" | Senha inicial: "${senhaPadrao}" (recomendado alterar após o 1º acesso)`
+      `🔐 [PostgreSQL] Usuário administrador padrão criado -> Login: "${loginPadrao}" | Senha inicial: "${senhaPadrao}"`
+    );
+  }
+
+  // Garante também o funcionário de exemplo do Figma (Lucas Sales - Atendimento) se não existir
+  const funcCheck = await pool.query(`SELECT id FROM Usuario WHERE LOWER(email) = 'lucas@cafeteriajoao.com' LIMIT 1`);
+  if (funcCheck.rowCount === 0) {
+    const senhaHash = await bcrypt.hash('123456', saltRounds);
+    await pool.query(
+      `INSERT INTO Usuario (login, nome, email, telefone, senha_hash, tipo, cargo, foto_webp, ativo, precisa_trocar_senha, favoritos)
+       VALUES ('lucas', 'Lucas Sales', 'lucas@cafeteriajoao.com', '48999990002', $1, 'funcionario', 'Atendimento', $2, TRUE, FALSE, '[]'::jsonb)`,
+      [senhaHash, fotosIniciais.perfil]
     );
   }
 
@@ -138,24 +160,29 @@ async function garantirDadosIniciais() {
     ];
 
     for (const [catId, nome, descricao, preco] of produtosIniciais) {
+      const fotoWebp = (fotosIniciais.produtos && fotosIniciais.produtos[nome]) || null;
       await pool.query(
-        `INSERT INTO Produto (categoria_id, nome, descricao, preco, oculto) VALUES ($1, $2, $3, $4, FALSE)`,
-        [catId, nome, descricao, preco]
+        `INSERT INTO Produto (categoria_id, nome, descricao, preco, foto_webp, oculto) VALUES ($1, $2, $3, $4, $5, FALSE)`,
+        [catId, nome, descricao, preco, fotoWebp]
       );
     }
     console.log('☕ [PostgreSQL] Categorias e Produtos iniciais do cardápio populados com sucesso!');
+  } else if (fotosIniciais.produtos) {
+    // Preenche fotos .webp nos produtos existentes que ainda estejam sem foto
+    for (const [nome, fotoWebp] of Object.entries(fotosIniciais.produtos)) {
+      await pool.query(
+        `UPDATE Produto SET foto_webp = $1 WHERE nome = $2 AND (foto_webp IS NULL OR foto_webp = '')`,
+        [fotoWebp, nome]
+      );
+    }
   }
 }
 
-/**
- * Inicializa o banco PostgreSQL na subida da aplicação (`app.js`).
- */
 async function inicializarBancoDeDados() {
   try {
     try {
       await pool.query('SELECT 1');
     } catch (erroInicial) {
-      // Código 3D000 = database does not exist no PostgreSQL
       if (erroInicial && erroInicial.code === '3D000') {
         await garantirDatabaseExistente();
       } else {
