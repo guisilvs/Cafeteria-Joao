@@ -19,7 +19,6 @@
   "author": "Time Back-end - Cafeteria do João",
   "license": "MIT",
   "dependencies": {
-    "@libsql/client": "^0.14.0",
     "bcrypt": "^6.0.0",
     "cors": "^2.8.5",
     "dotenv": "^16.4.7",
@@ -28,6 +27,7 @@
     "helmet": "^8.0.0",
     "jsonwebtoken": "^9.0.2",
     "multer": "^2.5.0",
+    "pg": "^8.11.3",
     "sharp": "^0.33.5"
   }
 }
