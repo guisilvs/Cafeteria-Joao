@@ -342,7 +342,7 @@
     secaoRealizado.style.display = 'none';
     btnLimpar.style.display = 'none';
     btnConta.style.display = 'flex';
-    stage.classList.remove('tema-pedido');
+    stage.classList.remove('tema-pedido', 'tema-favoritos');
 
     if (novaAba === 'cardapio') {
       titulo.textContent = 'Cafeteria do João';
@@ -353,6 +353,7 @@
       await carregarCardapioDoBanco();
     } else if (novaAba === 'favoritos') {
       titulo.textContent = 'Favoritos';
+      stage.classList.add('tema-favoritos');
       navFavoritos.classList.add('ativo');
       navFavoritos.setAttribute('aria-current', 'page');
       secaoProdutos.style.display = 'block';
@@ -529,13 +530,29 @@
   }
 
   async function limparSacola() {
-    if (!estado.usuario) return;
+    if (!estado.usuario) {
+      mostrarToast('Faça login para gerenciar seu pedido.', 'padrao');
+      abrirPainelConta();
+      return;
+    }
+    const itensAtuais = Array.isArray(estado.sacola?.itens) ? estado.sacola.itens : [];
+    if (itensAtuais.length === 0) {
+      mostrarToast('O pedido já está vazio.');
+      return;
+    }
     try {
       const res = await window.CafeteriaApi.limparSacola();
-      estado.sacola = res.sacola;
+      if (res && res.sacola) {
+        estado.sacola = res.sacola;
+      } else {
+        estado.sacola.itens = [];
+        estado.sacola.total_itens = 0;
+        estado.sacola.total = 0;
+        estado.sacola.total_formatado = 'R$ 0,00';
+      }
       atualizarBadgeSacola(0);
       renderizarSacola();
-      mostrarToast('Pedido limpo.');
+      mostrarToast('Pedido limpo com sucesso!', 'sucesso');
     } catch (erro) {
       mostrarToast(erro.message, 'erro');
     }
@@ -735,9 +752,14 @@
     const senha = document.getElementById('inputCadastroSenha').value;
     const confirmarSenha = document.getElementById('inputCadastroConfirmarSenha').value;
 
+    if (!nome || nome.length < 2) {
+      mostrarToast('O nome completo é obrigatório.', 'erro');
+      return;
+    }
+
     try {
       const res = await window.CafeteriaApi.registrarCliente({
-        nome: nome || undefined,
+        nome,
         email,
         telefone,
         senha,

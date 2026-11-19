@@ -93,8 +93,11 @@ async function cadastrarCliente(dados = {}) {
 
   validarSenha(dados.senha, confirmarSenha);
 
-  const nomeInformado = limparTextoSimples(dados.nome);
-  const nome = nomeInformado || derivarNomeDeEmail(email);
+  const nome = limparTextoSimples(dados.nome);
+
+  if (!nome) {
+    throw erroValidacao('O nome completo é obrigatório para criar a conta.');
+  }
 
   if (nome.length < 2 || nome.length > 100) {
     throw erroValidacao('O nome deve ter entre 2 e 100 caracteres.');

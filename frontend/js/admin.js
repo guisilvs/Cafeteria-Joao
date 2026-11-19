@@ -177,15 +177,9 @@
     try {
       const res = await window.CafeteriaApi.obterResumoAdmin();
       const badge = document.getElementById('sidebarBadgePedidos');
-      badge.style.display = res.notificacoes?.possuiPedidosPendentes ? 'block' : 'none';
-
-      document.getElementById('resumoPedidosPendentes').textContent =
-        res.contadores?.pedidosPendentes || 0;
-      document.getElementById('resumoCardapioTotal').textContent = `${
-        res.contadores?.categorias || 0
-      } cat / ${res.contadores?.itensCardapio || 0} itens`;
-      document.getElementById('resumoUsuariosTotal').textContent =
-        (res.contadores?.usuariosInternos || 0) + (res.contadores?.usuariosClientes || 0);
+      if (badge) {
+        badge.style.display = res.notificacoes?.possuiPedidosPendentes ? 'block' : 'none';
+      }
     } catch {
       // Silencioso
     }
@@ -196,6 +190,7 @@
 
     const conectado = await window.CafeteriaApi.verificarStatusBanco();
     atualizarIndicadorBanco(conectado);
+    await atualizarResumoENotificacoes();
 
     const idsSecoes = [
       'visaoOpcoes',
@@ -206,42 +201,48 @@
       'visaoUsuarios',
     ];
     idsSecoes.forEach((id) => {
-      document.getElementById(id).style.display = 'none';
+      const el = document.getElementById(id);
+      if (el) el.style.display = 'none';
     });
 
     ['menuBtnPedidos', 'menuBtnCardapio', 'menuBtnUsuarios'].forEach((id) => {
-      document.getElementById(id).classList.remove('ativo');
+      document.getElementById(id)?.classList.remove('ativo');
     });
 
     const titulo = document.getElementById('adminTituloPrincipal');
     const subtitulo = document.getElementById('adminSubtituloPrincipal');
+    const sidebar = document.getElementById('adminSidebar');
 
     if (visao === 'opcoes') {
       titulo.textContent = '';
       subtitulo.textContent = '';
-      document.getElementById('adminSidebar').classList.add('aberta');
+      sidebar.classList.add('aberta');
       document.getElementById('visaoOpcoes').style.display = 'block';
-      await atualizarResumoENotificacoes();
     } else if (visao === 'pedidos') {
+      sidebar.classList.remove('aberta');
       titulo.textContent = 'Pedidos';
       subtitulo.textContent = 'Pendentes';
       document.getElementById('menuBtnPedidos').classList.add('ativo');
       document.getElementById('visaoPedidos').style.display = 'block';
       await carregarPedidosAdmin();
     } else if (visao === 'categorias') {
+      sidebar.classList.remove('aberta');
       titulo.textContent = 'Cardápio';
       subtitulo.textContent = 'Categorias';
       document.getElementById('menuBtnCardapio').classList.add('ativo');
       document.getElementById('visaoCategorias').style.display = 'block';
       await carregarCategoriasAdmin();
     } else if (visao === 'itens_categoria') {
+      sidebar.classList.remove('aberta');
       document.getElementById('menuBtnCardapio').classList.add('ativo');
       document.getElementById('visaoItensCategoria').style.display = 'block';
       await carregarItensDaCategoriaAdmin(parametro || estado.categoriaAtiva?.id);
     } else if (visao === 'editor_produto') {
+      sidebar.classList.remove('aberta');
       document.getElementById('menuBtnCardapio').classList.add('ativo');
       document.getElementById('visaoEditorProduto').style.display = 'block';
     } else if (visao === 'usuarios') {
+      sidebar.classList.remove('aberta');
       titulo.textContent = 'Usuários';
       subtitulo.textContent = '';
       document.getElementById('menuBtnUsuarios').classList.add('ativo');
@@ -489,7 +490,7 @@
   }
 
   // ==========================================================================
-  // 4. GERENCIAMENTO DE CATEGORIAS DO CARDÁPIO (Node 143:148)
+  // 4. GERENCIAMENTO DE CATEGORIAS DO CARDÁPIO COM PINÇAR E ARRASTAR (Node 143:148)
   // ==========================================================================
 
   async function carregarCategoriasAdmin() {
@@ -510,52 +511,181 @@
 
       container.innerHTML = estado.categorias
         .map(
-          (cat, idx) => `
-          <div class="barra-item-admin">
-            <div class="barra-esquerda" onclick="window.AppAdmin.navegarPara('itens_categoria', ${cat.id})">
-              <div class="botoes-ordem-categoria" onclick="event.stopPropagation()" title="Reordenar posição">
-                <button type="button" onclick="window.AppAdmin.moverCategoria(${idx}, -1)">▲</button>
-                <button type="button" onclick="window.AppAdmin.moverCategoria(${idx}, 1)">▼</button>
-              </div>
-              <div>
-                <div class="barra-titulo-principal">${escaparHtml(cat.nome)}</div>
-              </div>
+          (cat) => `
+          <div
+            class="barra-item-admin barra-categoria-draggable"
+            draggable="true"
+            data-categoria-id="${cat.id}"
+            onclick="window.AppAdmin.navegarPara('itens_categoria', ${cat.id})"
+          >
+            <div class="barra-esquerda">
+              <span
+                class="handle-pinca-categoria"
+                title="Pinçar e arrastar para reordenar"
+                onclick="event.stopPropagation()"
+              >
+                <svg width="28" height="28" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+                  <path d="M4 7H20M4 12H20M4 17H20" stroke="#1a1a1a" stroke-width="2.2" stroke-linecap="round"/>
+                </svg>
+              </span>
+              <div class="barra-titulo-principal">${escaparHtml(cat.nome)}</div>
             </div>
 
-            <div class="barra-direita">
-              <button
-                type="button"
-                class="btn-secundario-pill"
-                style="height: 36px;"
-                onclick="window.AppAdmin.navegarPara('itens_categoria', ${cat.id})"
-              >
-                Ver produtos
-              </button>
+            <div class="barra-direita" onclick="event.stopPropagation()">
               <button
                 type="button"
                 class="btn-acao-icone"
-                title="Editar nome da categoria"
+                title="Editar categoria"
                 onclick="window.AppAdmin.abrirModalCategoria(${cat.id})"
               >
-                <i class="fa-solid fa-pen"></i>
-              </button>
-              <button
-                type="button"
-                class="btn-acao-icone"
-                style="color: #c00;"
-                title="Excluir categoria"
-                onclick="window.AppAdmin.excluirCategoria(${cat.id})"
-              >
-                <i class="fa-solid fa-trash"></i>
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+                  <path d="M16.862 3.487a2.1 2.1 0 0 1 2.97 2.97L8.25 18.04 4 19l.96-4.25L16.862 3.487z" stroke="#1a1a1a" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                </svg>
               </button>
             </div>
           </div>
         `
         )
         .join('');
+
+      inicializarDragAndDropCategorias(container);
     } catch (erro) {
       mostrarToast(erro.message, 'erro');
     }
+  }
+
+  function inicializarDragAndDropCategorias(container) {
+    let itemArrastado = null;
+    let ordemInicialIds = [];
+
+    const obterIdsNaOrdemDoDom = () =>
+      Array.from(container.querySelectorAll('.barra-categoria-draggable')).map((el) =>
+        Number(el.getAttribute('data-categoria-id'))
+      );
+
+    const persistirNovaOrdemSeMudou = async () => {
+      const novaOrdemIds = obterIdsNaOrdemDoDom();
+      if (
+        novaOrdemIds.length === 0 ||
+        JSON.stringify(novaOrdemIds) === JSON.stringify(ordemInicialIds)
+      ) {
+        return;
+      }
+
+      const payload = novaOrdemIds.map((id, idx) => ({ id, ordem: idx + 1 }));
+      try {
+        await window.CafeteriaApi.reordenarCategoriasAdmin(payload);
+        const mapaCat = new Map(estado.categorias.map((c) => [Number(c.id), c]));
+        estado.categorias = novaOrdemIds
+          .map((id, idx) => {
+            const c = mapaCat.get(id);
+            return c ? { ...c, ordem: idx + 1 } : null;
+          })
+          .filter(Boolean);
+        mostrarToast('Ordem das categorias atualizada!', 'sucesso');
+      } catch (erro) {
+        mostrarToast(erro.message, 'erro');
+        await carregarCategoriasAdmin();
+      }
+    };
+
+    const linhas = container.querySelectorAll('.barra-categoria-draggable');
+    linhas.forEach((linha) => {
+      linha.addEventListener('dragstart', (e) => {
+        itemArrastado = linha;
+        ordemInicialIds = obterIdsNaOrdemDoDom();
+        linha.classList.add('arrastando');
+        if (e.dataTransfer) {
+          e.dataTransfer.effectAllowed = 'move';
+          e.dataTransfer.setData('text/plain', linha.getAttribute('data-categoria-id'));
+        }
+      });
+
+      linha.addEventListener('dragend', async () => {
+        if (!itemArrastado) return;
+        itemArrastado.classList.remove('arrastando');
+        itemArrastado = null;
+        await persistirNovaOrdemSeMudou();
+      });
+
+      // Suporte adicional a Pinçar e Arrastar via Pointer Events (Mouse / Touch) na alça ≡
+      const alca = linha.querySelector('.handle-pinca-categoria');
+      if (alca) {
+        alca.addEventListener('pointerdown', (ev) => {
+          ev.preventDefault();
+          ev.stopPropagation();
+          itemArrastado = linha;
+          ordemInicialIds = obterIdsNaOrdemDoDom();
+          linha.classList.add('arrastando');
+
+          const aoMoverPonteiro = (moveEv) => {
+            if (!itemArrastado) return;
+            const demais = [
+              ...container.querySelectorAll('.barra-categoria-draggable:not(.arrastando)'),
+            ];
+            const proximoElemento = demais.reduce(
+              (maisProximo, filho) => {
+                const box = filho.getBoundingClientRect();
+                const offset = moveEv.clientY - box.top - box.height / 2;
+                if (offset < 0 && offset > maisProximo.offset) {
+                  return { offset, element: filho };
+                }
+                return maisProximo;
+              },
+              { offset: Number.NEGATIVE_INFINITY, element: null }
+            ).element;
+
+            if (!proximoElemento) {
+              container.appendChild(itemArrastado);
+            } else {
+              container.insertBefore(itemArrastado, proximoElemento);
+            }
+          };
+
+          const aoSoltarPonteiro = async () => {
+            window.removeEventListener('pointermove', aoMoverPonteiro);
+            window.removeEventListener('pointerup', aoSoltarPonteiro);
+            if (!itemArrastado) return;
+            itemArrastado.classList.remove('arrastando');
+            itemArrastado = null;
+            await persistirNovaOrdemSeMudou();
+          };
+
+          window.addEventListener('pointermove', aoMoverPonteiro);
+          window.addEventListener('pointerup', aoSoltarPonteiro);
+        });
+      }
+    });
+
+    container.ondragover = (e) => {
+      e.preventDefault();
+      if (!itemArrastado) return;
+
+      const demais = [
+        ...container.querySelectorAll('.barra-categoria-draggable:not(.arrastando)'),
+      ];
+      const proximoElemento = demais.reduce(
+        (maisProximo, filho) => {
+          const box = filho.getBoundingClientRect();
+          const offset = e.clientY - box.top - box.height / 2;
+          if (offset < 0 && offset > maisProximo.offset) {
+            return { offset, element: filho };
+          }
+          return maisProximo;
+        },
+        { offset: Number.NEGATIVE_INFINITY, element: null }
+      ).element;
+
+      if (!proximoElemento) {
+        container.appendChild(itemArrastado);
+      } else {
+        container.insertBefore(itemArrastado, proximoElemento);
+      }
+    };
+
+    container.ondrop = (e) => {
+      e.preventDefault();
+    };
   }
 
   async function moverCategoria(indiceAtual, direcao) {
@@ -576,6 +706,10 @@
     }
   }
 
+  function obterCategoriaEditandoId() {
+    return estado.categoriaEditandoId;
+  }
+
   function abrirModalCategoria(categoriaId = null) {
     estado.categoriaEditandoId = categoriaId;
     const cat = estado.categorias.find((c) => String(c.id) === String(categoriaId));
@@ -587,6 +721,11 @@
     document.getElementById('inputModalCategoriaOrdem').value = cat
       ? cat.ordem || 1
       : estado.categorias.length + 1;
+
+    const btnExcluirCat = document.getElementById('btnExcluirCategoriaModal');
+    if (btnExcluirCat) {
+      btnExcluirCat.style.display = cat ? 'inline-block' : 'none';
+    }
 
     document.getElementById('modalCategoria').classList.add('aberto');
   }
@@ -612,8 +751,10 @@
   }
 
   async function excluirCategoria(id) {
+    if (!id) return;
     try {
       await window.CafeteriaApi.removerCategoriaAdmin(id, false);
+      fecharModais();
       mostrarToast('Categoria removida!', 'sucesso');
       await carregarCategoriasAdmin();
     } catch (erro) {
@@ -1073,6 +1214,7 @@
     salvarModificacaoPedido,
     excluirPedidoModal,
     moverCategoria,
+    obterCategoriaEditandoId,
     abrirModalCategoria,
     salvarCategoriaModal,
     excluirCategoria,
